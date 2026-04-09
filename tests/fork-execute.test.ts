@@ -398,7 +398,6 @@ describe("fork-backed execute flow", () => {
             actorAddress: signerAddress,
             contractKind: "erc20-pool",
             contractAddress: poolAddress,
-            abiFragment: "function updateInterest()",
             methodName: "updateInterest",
             args: [],
             acknowledgeRisk: UNSAFE_SDK_CALL_ACKNOWLEDGEMENT,

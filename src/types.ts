@@ -8,6 +8,8 @@ export type ActionKind =
   | "inspect-pool"
   | "inspect-bucket"
   | "inspect-position"
+  | "prepare-create-erc20-pool"
+  | "prepare-create-erc721-pool"
   | "prepare-lend"
   | "prepare-borrow"
   | "prepare-approve-erc20"
@@ -50,6 +52,25 @@ export interface PrepareLendInput extends PoolSelector {
   approvalMode?: "exact" | "max";
 }
 
+export interface PrepareCreateErc20PoolInput {
+  network: AjnaNetwork;
+  actorAddress: string;
+  collateralAddress: string;
+  quoteAddress: string;
+  interestRate: string;
+  maxAgeSeconds?: number;
+}
+
+export interface PrepareCreateErc721PoolInput {
+  network: AjnaNetwork;
+  actorAddress: string;
+  collateralAddress: string;
+  quoteAddress: string;
+  interestRate: string;
+  tokenIds?: string[];
+  maxAgeSeconds?: number;
+}
+
 export interface PrepareBorrowInput extends PoolSelector {
   actorAddress: string;
   amount: string;
@@ -84,7 +105,7 @@ export interface PrepareUnsupportedAjnaActionInput {
   actorAddress: string;
   contractKind: UnsupportedAjnaContractKind;
   contractAddress?: string;
-  abiFragment: string;
+  abiFragment?: string;
   methodName: string;
   args: Array<unknown>;
   value?: string;
@@ -111,7 +132,14 @@ export interface PreparedTransaction {
 
 export interface PreparedAction {
   version: 1;
-  kind: "lend" | "borrow" | "approve-erc20" | "approve-erc721" | "unsupported-ajna-action";
+  kind:
+    | "create-erc20-pool"
+    | "create-erc721-pool"
+    | "lend"
+    | "borrow"
+    | "approve-erc20"
+    | "approve-erc721"
+    | "unsupported-ajna-action";
   network: AjnaNetwork;
   chainId: number;
   actorAddress: string;
@@ -253,6 +281,7 @@ export interface ExecutePreparedResult {
   kind: PreparedAction["kind"];
   network: AjnaNetwork;
   actorAddress: string;
+  resolvedPoolAddress?: string;
   submitted: Array<{
     label: PreparedTransaction["label"];
     hash: string;

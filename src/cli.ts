@@ -10,6 +10,8 @@ import {
   runPrepareApproveErc20,
   runPrepareApproveErc721,
   runPrepareBorrow,
+  runPrepareCreateErc20Pool,
+  runPrepareCreateErc721Pool,
   runPrepareLend,
   runPrepareUnsupportedAjnaAction
 } from "./actions.js";
@@ -21,6 +23,8 @@ import type {
   PrepareApproveErc20Input,
   PrepareApproveErc721Input,
   PrepareBorrowInput,
+  PrepareCreateErc20PoolInput,
+  PrepareCreateErc721PoolInput,
   PrepareLendInput,
   PrepareUnsupportedAjnaActionInput,
   SuccessEnvelope
@@ -37,6 +41,10 @@ async function main() {
       return printSuccess(await runInspectBucket(parseJsonArgument<InspectBucketInput>(payload)));
     case "inspect-position":
       return printSuccess(await runInspectPosition(parseJsonArgument<InspectPositionInput>(payload)));
+    case "prepare-create-erc20-pool":
+      return printSuccess(await runPrepareCreateErc20Pool(parseJsonArgument<PrepareCreateErc20PoolInput>(payload)));
+    case "prepare-create-erc721-pool":
+      return printSuccess(await runPrepareCreateErc721Pool(parseJsonArgument<PrepareCreateErc721PoolInput>(payload)));
     case "prepare-lend":
       return printSuccess(await runPrepareLend(parseJsonArgument<PrepareLendInput>(payload)));
     case "prepare-borrow":
@@ -53,7 +61,7 @@ async function main() {
       return printSuccess(await runExecutePrepared(parseJsonArgument<ExecutePreparedInput>(payload)));
     default:
       throw new Error(
-        "Unknown action. Expected one of inspect-pool, inspect-bucket, inspect-position, prepare-lend, prepare-borrow, prepare-approve-erc20, prepare-approve-erc721, prepare-unsupported-ajna-action, execute-prepared"
+        "Unknown action. Expected one of inspect-pool, inspect-bucket, inspect-position, prepare-create-erc20-pool, prepare-create-erc721-pool, prepare-lend, prepare-borrow, prepare-approve-erc20, prepare-approve-erc721, prepare-unsupported-ajna-action, execute-prepared"
       );
   }
 }

@@ -4,7 +4,7 @@ import { loadRuntimeConfig } from "./config.js";
 import { UNSAFE_SDK_CALL_ACKNOWLEDGEMENT } from "./constants.js";
 import { AjnaSkillError, invariant } from "./errors.js";
 import { validatePreparedAction } from "./prepared.js";
-import { AjnaAdapter, assertProviderMatchesNetwork } from "./sdk.js";
+import { AjnaAdapter, assertProviderMatchesNetwork, resolveCreatedPoolAddress } from "./sdk.js";
 import type {
   BucketInspectionResult,
   ExecutePreparedInput,
@@ -15,6 +15,8 @@ import type {
   PrepareApproveErc20Input,
   PrepareApproveErc721Input,
   PrepareBorrowInput,
+  PrepareCreateErc20PoolInput,
+  PrepareCreateErc721PoolInput,
   PrepareLendInput,
   PrepareUnsupportedAjnaActionInput
 } from "./types.js";
@@ -42,6 +44,20 @@ export async function runPrepareLend(input: PrepareLendInput) {
   invariant(runtime.mode !== "inspect", "MODE_BLOCKS_PREPARE", "Prepare requires AJNA_SKILLS_MODE=prepare or execute");
   const adapter = new AjnaAdapter(runtime);
   return adapter.prepareLend(input);
+}
+
+export async function runPrepareCreateErc20Pool(input: PrepareCreateErc20PoolInput) {
+  const runtime = loadRuntimeConfig();
+  invariant(runtime.mode !== "inspect", "MODE_BLOCKS_PREPARE", "Prepare requires AJNA_SKILLS_MODE=prepare or execute");
+  const adapter = new AjnaAdapter(runtime);
+  return adapter.prepareCreateErc20Pool(input);
+}
+
+export async function runPrepareCreateErc721Pool(input: PrepareCreateErc721PoolInput) {
+  const runtime = loadRuntimeConfig();
+  invariant(runtime.mode !== "inspect", "MODE_BLOCKS_PREPARE", "Prepare requires AJNA_SKILLS_MODE=prepare or execute");
+  const adapter = new AjnaAdapter(runtime);
+  return adapter.prepareCreateErc721Pool(input);
 }
 
 export async function runPrepareBorrow(input: PrepareBorrowInput) {
@@ -181,10 +197,13 @@ export async function runExecutePrepared(
     });
   }
 
+  const resolvedPoolAddress = await resolveCreatedPoolAddress(provider, network, input.preparedAction);
+
   return {
     kind: input.preparedAction.kind,
     network: input.preparedAction.network,
     actorAddress: input.preparedAction.actorAddress,
+    resolvedPoolAddress,
     submitted
   };
 }

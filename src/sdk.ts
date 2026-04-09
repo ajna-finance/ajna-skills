@@ -1,10 +1,13 @@
 import {
+  AjnaToken__factory,
   Config,
   ERC20Pool__factory,
   ERC20PoolFactory__factory,
   ERC721Pool__factory,
+  ERC721PoolFactory__factory,
   ERC20__factory,
   PoolInfoUtils__factory,
+  PositionManager__factory,
   createTransaction
 } from "@ajna-finance/sdk";
 import { BigNumber, ethers } from "ethers";
@@ -13,6 +16,7 @@ import {
   DEFAULT_PREPARED_MAX_AGE_SECONDS,
   DEFAULT_TTL_SECONDS,
   ERC20_NON_SUBSET_HASH,
+  ERC721_NON_SUBSET_HASH,
   UNSAFE_SDK_CALL_ACKNOWLEDGEMENT
 } from "./constants.js";
 import { AjnaSkillError, invariant } from "./errors.js";
@@ -28,10 +32,13 @@ import type {
   PrepareApproveErc20Input,
   PrepareApproveErc721Input,
   PrepareBorrowInput,
+  PrepareCreateErc20PoolInput,
+  PrepareCreateErc721PoolInput,
   PrepareLendInput,
   PrepareUnsupportedAjnaActionInput,
   RuntimeConfig,
-  RuntimeNetworkConfig
+  RuntimeNetworkConfig,
+  UnsupportedAjnaContractKind
 } from "./types.js";
 
 type TransactionLike = Awaited<ReturnType<typeof createTransaction>> & {
@@ -44,6 +51,13 @@ const ERC721_APPROVAL_ABI = [
   "function isApprovedForAll(address owner, address operator) view returns (bool)",
   "function setApprovalForAll(address operator, bool approved)"
 ] as const;
+type UnsafeContractAbi = ReadonlyArray<any>;
+const UNSAFE_CONTRACT_ABIS: Record<UnsupportedAjnaContractKind, UnsafeContractAbi> = {
+  "erc20-pool": ERC20Pool__factory.abi,
+  "erc721-pool": ERC721Pool__factory.abi,
+  "position-manager": PositionManager__factory.abi,
+  "ajna-token": AjnaToken__factory.abi
+};
 
 export class AjnaAdapter {
   constructor(private readonly runtime: RuntimeConfig) {}
@@ -217,6 +231,140 @@ export class AjnaAdapter {
       quoteRedeemable: quoteRedeemable.toString(),
       collateralRedeemable: collateralRedeemable.toString()
     };
+  }
+
+  async prepareCreateErc20Pool(input: PrepareCreateErc20PoolInput): Promise<PreparedAction> {
+    const network = this.network(input.network);
+    const provider = await this.provider(network);
+    const actorAddress = ethers.utils.getAddress(input.actorAddress);
+    const collateralAddress = ethers.utils.getAddress(input.collateralAddress);
+    const quoteAddress = ethers.utils.getAddress(input.quoteAddress);
+    const interestRate = BigNumber.from(input.interestRate);
+    invariant(
+      collateralAddress !== quoteAddress,
+      "INVALID_POOL_TOKENS",
+      "Collateral and quote token addresses must differ"
+    );
+
+    const startingNonce = await provider.getTransactionCount(actorAddress, "pending");
+    const factory = ERC20PoolFactory__factory.connect(network.erc20PoolFactory, provider);
+    await this.assertFactoryInterestRateRange(factory, interestRate);
+
+    const existingPoolAddress = await factory.deployedPools(ERC20_NON_SUBSET_HASH, collateralAddress, quoteAddress);
+    invariant(
+      existingPoolAddress === ethers.constants.AddressZero,
+      "POOL_ALREADY_EXISTS",
+      "Ajna ERC20 pool already exists for the provided token pair",
+      {
+        poolAddress: existingPoolAddress,
+        collateralAddress,
+        quoteAddress
+      }
+    );
+
+    const tx = await this.prepareContractTransaction({
+      contract: factory,
+      methodName: "deployPool",
+      args: [collateralAddress, quoteAddress, interestRate],
+      from: actorAddress,
+      label: "action"
+    });
+    const expiresAt = new Date(
+      Date.now() + (input.maxAgeSeconds ?? DEFAULT_PREPARED_MAX_AGE_SECONDS) * 1000
+    ).toISOString();
+
+    return finalizePreparedAction(
+      {
+        version: 1,
+        kind: "create-erc20-pool",
+        network: input.network,
+        chainId: network.chainId,
+        actorAddress,
+        startingNonce,
+        poolAddress: network.erc20PoolFactory,
+        quoteAddress,
+        collateralAddress,
+        createdAt: new Date().toISOString(),
+        expiresAt,
+        transactions: [tx],
+        metadata: {
+          factoryAddress: network.erc20PoolFactory,
+          interestRate: interestRate.toString(),
+          subsetHash: ERC20_NON_SUBSET_HASH,
+          collateralType: "erc20"
+        }
+      },
+      this.runtime
+    );
+  }
+
+  async prepareCreateErc721Pool(input: PrepareCreateErc721PoolInput): Promise<PreparedAction> {
+    const network = this.network(input.network);
+    const provider = await this.provider(network);
+    const actorAddress = ethers.utils.getAddress(input.actorAddress);
+    const collateralAddress = ethers.utils.getAddress(input.collateralAddress);
+    const quoteAddress = ethers.utils.getAddress(input.quoteAddress);
+    const interestRate = BigNumber.from(input.interestRate);
+    invariant(
+      collateralAddress !== quoteAddress,
+      "INVALID_POOL_TOKENS",
+      "Collateral and quote token addresses must differ"
+    );
+
+    const tokenIds = this.normalizeSubsetTokenIds(input.tokenIds);
+    const subsetHash = this.computeErc721SubsetHash(tokenIds);
+    const startingNonce = await provider.getTransactionCount(actorAddress, "pending");
+    const factory = ERC721PoolFactory__factory.connect(network.erc721PoolFactory, provider);
+    await this.assertFactoryInterestRateRange(factory, interestRate);
+
+    const existingPoolAddress = await factory.deployedPools(subsetHash, collateralAddress, quoteAddress);
+    invariant(
+      existingPoolAddress === ethers.constants.AddressZero,
+      "POOL_ALREADY_EXISTS",
+      "Ajna ERC721 pool already exists for the provided collateral, quote, and subset",
+      {
+        poolAddress: existingPoolAddress,
+        collateralAddress,
+        quoteAddress,
+        subsetHash
+      }
+    );
+
+    const tx = await this.prepareContractTransaction({
+      contract: factory,
+      methodName: "deployPool(address,address,uint256[],uint256)",
+      args: [collateralAddress, quoteAddress, tokenIds, interestRate],
+      from: actorAddress,
+      label: "action"
+    });
+    const expiresAt = new Date(
+      Date.now() + (input.maxAgeSeconds ?? DEFAULT_PREPARED_MAX_AGE_SECONDS) * 1000
+    ).toISOString();
+
+    return finalizePreparedAction(
+      {
+        version: 1,
+        kind: "create-erc721-pool",
+        network: input.network,
+        chainId: network.chainId,
+        actorAddress,
+        startingNonce,
+        poolAddress: network.erc721PoolFactory,
+        quoteAddress,
+        collateralAddress,
+        createdAt: new Date().toISOString(),
+        expiresAt,
+        transactions: [tx],
+        metadata: {
+          factoryAddress: network.erc721PoolFactory,
+          interestRate: interestRate.toString(),
+          subsetHash,
+          subsetSize: tokenIds.length,
+          collateralType: tokenIds.length === 0 ? "erc721-collection" : "erc721-subset"
+        }
+      },
+      this.runtime
+    );
   }
 
   async prepareLend(input: PrepareLendInput): Promise<PreparedAction> {
@@ -511,14 +659,15 @@ export class AjnaAdapter {
     const provider = await this.provider(network);
     const actorAddress = ethers.utils.getAddress(input.actorAddress);
     const contractAddress = await this.resolveUnsupportedContractAddress(input, network, provider);
+    const resolvedMethod = this.resolveUnsupportedMethod(input);
     const startingNonce = await provider.getTransactionCount(actorAddress, "pending");
     const expiresAt = new Date(
       Date.now() + (input.maxAgeSeconds ?? DEFAULT_PREPARED_MAX_AGE_SECONDS) * 1000
     ).toISOString();
-    const contract = new ethers.Contract(contractAddress, [input.abiFragment], provider);
+    const contract = new ethers.Contract(contractAddress, resolvedMethod.abi, provider);
     const tx = await this.prepareContractTransaction({
       contract,
-      methodName: input.methodName,
+      methodName: resolvedMethod.methodName,
       args: input.args,
       from: actorAddress,
       label: "action",
@@ -543,8 +692,10 @@ export class AjnaAdapter {
           unsafe: true,
           contractKind: input.contractKind,
           contractAddress,
-          abiFragment: input.abiFragment,
-          methodName: input.methodName,
+          abiFragment: resolvedMethod.abiFragment,
+          methodName: resolvedMethod.methodName,
+          requestedMethodName: input.methodName,
+          abiSource: resolvedMethod.source,
           argsCount: input.args.length,
           value: BigNumber.from(input.value ?? 0).toString(),
           acknowledgement: UNSAFE_SDK_CALL_ACKNOWLEDGEMENT,
@@ -644,6 +795,119 @@ export class AjnaAdapter {
   private async latestTimestamp(provider: ethers.providers.Provider): Promise<number> {
     const block = await provider.getBlock("latest");
     return block.timestamp;
+  }
+
+  private resolveUnsupportedMethod(input: PrepareUnsupportedAjnaActionInput): {
+    abi: UnsafeContractAbi;
+    abiFragment: string;
+    methodName: string;
+    source: "builtin" | "fragment";
+  } {
+    const abi = UNSAFE_CONTRACT_ABIS[input.contractKind];
+    const iface = new ethers.utils.Interface(abi);
+
+    if (input.abiFragment) {
+      const fragment = ethers.utils.FunctionFragment.from(input.abiFragment);
+      const signature = fragment.format(ethers.utils.FormatTypes.sighash);
+      const builtinFragment = iface.getFunction(signature);
+
+      return {
+        abi,
+        abiFragment: builtinFragment.format(ethers.utils.FormatTypes.full),
+        methodName: signature,
+        source: "fragment"
+      };
+    }
+
+    if (input.methodName.includes("(")) {
+      const fragment = iface.getFunction(input.methodName);
+      return {
+        abi,
+        abiFragment: fragment.format(ethers.utils.FormatTypes.full),
+        methodName: fragment.format(ethers.utils.FormatTypes.sighash),
+        source: "builtin"
+      };
+    }
+
+    const fragments = Object.values(iface.functions).filter((fragment) => fragment.name === input.methodName);
+    invariant(
+      fragments.length > 0,
+      "UNSAFE_METHOD_NOT_FOUND",
+      "Requested unsupported Ajna method was not found in the built-in ABI",
+      {
+        contractKind: input.contractKind,
+        methodName: input.methodName
+      }
+    );
+    invariant(
+      fragments.length === 1,
+      "UNSAFE_METHOD_AMBIGUOUS",
+      "Requested unsupported Ajna method is overloaded; provide abiFragment or full method signature",
+      {
+        contractKind: input.contractKind,
+        methodName: input.methodName,
+        candidates: fragments.map((fragment) => fragment.format(ethers.utils.FormatTypes.sighash))
+      }
+    );
+
+    return {
+      abi,
+      abiFragment: fragments[0]!.format(ethers.utils.FormatTypes.full),
+      methodName: fragments[0]!.format(ethers.utils.FormatTypes.sighash),
+      source: "builtin"
+    };
+  }
+
+  private normalizeSubsetTokenIds(tokenIds: string[] | undefined): string[] {
+    if (!tokenIds || tokenIds.length === 0) {
+      return [];
+    }
+
+    const sorted = tokenIds.map((tokenId) => BigNumber.from(tokenId)).sort((left, right) => {
+      if (left.lt(right)) return -1;
+      if (left.gt(right)) return 1;
+      return 0;
+    });
+
+    for (let index = 1; index < sorted.length; index += 1) {
+      invariant(
+        !sorted[index]!.eq(sorted[index - 1]!),
+        "DUPLICATE_TOKEN_ID",
+        "ERC721 subset tokenIds must be unique"
+      );
+    }
+
+    return sorted.map((tokenId) => tokenId.toString());
+  }
+
+  private computeErc721SubsetHash(tokenIds: string[]): string {
+    if (tokenIds.length === 0) {
+      return ERC721_NON_SUBSET_HASH;
+    }
+
+    return ethers.utils.keccak256(
+      ethers.utils.defaultAbiCoder.encode(["uint256[]"], [tokenIds.map((tokenId) => BigNumber.from(tokenId))])
+    );
+  }
+
+  private async assertFactoryInterestRateRange(
+    factory: {
+      MIN_RATE: () => Promise<BigNumber>;
+      MAX_RATE: () => Promise<BigNumber>;
+    },
+    interestRate: BigNumber
+  ): Promise<void> {
+    const [minRate, maxRate] = await Promise.all([factory.MIN_RATE(), factory.MAX_RATE()]);
+    invariant(
+      interestRate.gte(minRate) && interestRate.lte(maxRate),
+      "INTEREST_RATE_OUT_OF_RANGE",
+      "Ajna factory rejected the requested interest rate range",
+      {
+        interestRate: interestRate.toString(),
+        minRate: minRate.toString(),
+        maxRate: maxRate.toString()
+      }
+    );
   }
 
   private async prepareContractTransaction({
@@ -765,6 +1029,40 @@ export class AjnaAdapter {
       contractKind: kind
     });
   }
+}
+
+export async function resolveCreatedPoolAddress(
+  provider: ethers.providers.JsonRpcProvider,
+  network: RuntimeNetworkConfig,
+  preparedAction: PreparedAction
+): Promise<string | undefined> {
+  if (preparedAction.kind === "create-erc20-pool") {
+    const factory = ERC20PoolFactory__factory.connect(network.erc20PoolFactory, provider);
+    const poolAddress = await factory.deployedPools(
+      ERC20_NON_SUBSET_HASH,
+      preparedAction.collateralAddress,
+      preparedAction.quoteAddress
+    );
+    return poolAddress === ethers.constants.AddressZero ? undefined : poolAddress;
+  }
+
+  if (preparedAction.kind === "create-erc721-pool") {
+    const subsetHash = preparedAction.metadata.subsetHash;
+    invariant(
+      typeof subsetHash === "string" && subsetHash.length > 0,
+      "POOL_RESOLUTION_FAILED",
+      "Prepared ERC721 pool creation is missing subset hash metadata"
+    );
+    const factory = ERC721PoolFactory__factory.connect(network.erc721PoolFactory, provider);
+    const poolAddress = await factory.deployedPools(
+      subsetHash,
+      preparedAction.collateralAddress,
+      preparedAction.quoteAddress
+    );
+    return poolAddress === ethers.constants.AddressZero ? undefined : poolAddress;
+  }
+
+  return undefined;
 }
 
 export async function assertProviderMatchesNetwork(

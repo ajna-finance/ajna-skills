@@ -76,6 +76,26 @@ For lender positions, also include `bucketIndex` and set `"positionType":"lender
 node dist/cli.js prepare-lend '{"network":"base","poolAddress":"0x...","actorAddress":"0x...","amount":"1000000000000000000","bucketIndex":1234,"approvalMode":"exact"}'
 ```
 
+### Prepare ERC20 pool creation
+
+```bash
+node dist/cli.js prepare-create-erc20-pool '{"network":"base","actorAddress":"0x...","collateralAddress":"0x...","quoteAddress":"0x...","interestRate":"50000000000000000"}'
+```
+
+### Prepare ERC721 pool creation
+
+Collection pool:
+
+```bash
+node dist/cli.js prepare-create-erc721-pool '{"network":"base","actorAddress":"0x...","collateralAddress":"0x...","quoteAddress":"0x...","interestRate":"50000000000000000"}'
+```
+
+Subset pool:
+
+```bash
+node dist/cli.js prepare-create-erc721-pool '{"network":"base","actorAddress":"0x...","collateralAddress":"0x...","quoteAddress":"0x...","interestRate":"50000000000000000","tokenIds":["1","2","5"]}'
+```
+
 ### Prepare borrow
 
 ```bash
@@ -105,7 +125,7 @@ node dist/cli.js prepare-approve-erc721 '{"network":"base","poolAddress":"0x..."
 ### Prepare unsupported Ajna action
 
 ```bash
-node dist/cli.js prepare-unsupported-ajna-action '{"network":"base","actorAddress":"0x...","contractKind":"position-manager","abiFragment":"function memorializePositions(address,uint256[])","methodName":"memorializePositions","args":["0x...",["1","2"]],"acknowledgeRisk":"I understand this bypasses the stable skill surface","notes":"operator requested unsupported Ajna action"}'
+node dist/cli.js prepare-unsupported-ajna-action '{"network":"base","actorAddress":"0x...","contractKind":"position-manager","methodName":"memorializePositions","args":["0x...","123",["1","2"]],"acknowledgeRisk":"I understand this bypasses the stable skill surface","notes":"operator requested unsupported Ajna action"}'
 ```
 
 ### Execute prepared payload
@@ -124,6 +144,7 @@ node dist/cli.js execute-prepared '{"preparedAction":{...}}'
 - If the signer nonce changed since prepare time, re-prepare instead of retrying.
 - If you are missing RPC or signer config, fail clearly instead of guessing.
 - Unsupported Ajna actions must stay prepare-only and require both the env gate and the exact acknowledgement phrase.
+- Pool-creation executes may return `resolvedPoolAddress`, but you should still inspect the created pool before borrowing against it.
 
 ## Notes
 
@@ -132,5 +153,7 @@ node dist/cli.js execute-prepared '{"preparedAction":{...}}'
 - Ajna lend and borrow actions in v1 still target ERC20 pools only.
 - `inspect-pool` defaults to a basic summary; use `"detailLevel":"full"` for lower-level rate, debt, and reserve-auction state.
 - `inspect-bucket` is the dedicated pool-liquidity read for a single bucket index.
+- Pool creation is explicit via `prepare-create-erc20-pool` and `prepare-create-erc721-pool`, not the unsafe escape hatch.
 - v1 also supports preparing ERC20 and ERC721 approvals to a pool/operator target.
 - `prepare-unsupported-ajna-action` is the explicit advanced escape hatch for unsupported Ajna-native calls.
+- It resolves ABI from built-in Ajna contract ABIs by `contractKind`; only pass `abiFragment` when you need overload disambiguation or exact-signature control.

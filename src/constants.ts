@@ -2,6 +2,8 @@ import type { AjnaNetwork, RuntimeNetworkConfig } from "./types.js";
 
 export const ERC20_NON_SUBSET_HASH =
   "0x2263c4378b4920f0bef611a3ff22c506afa4745b3319c50b6d704a874990b8b2";
+export const ERC721_NON_SUBSET_HASH =
+  "0x93e3b87db48beb11f82ff978661ba6e96f72f582300e9724191ab4b5d7964364";
 
 export const DEFAULT_TTL_SECONDS = 600;
 export const DEFAULT_PREPARED_MAX_AGE_SECONDS = 600;

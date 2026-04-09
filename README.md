@@ -24,6 +24,8 @@ Pre-v1. This repo is being built to match the approved design and eng review in
 - `inspect-pool`
 - `inspect-bucket`
 - `inspect-position`
+- `prepare-create-erc20-pool`
+- `prepare-create-erc721-pool`
 - `prepare-lend`
 - `prepare-borrow`
 - `prepare-approve-erc20`
@@ -243,6 +245,55 @@ Lender bucket position:
 }
 ```
 
+### `prepare-create-erc20-pool`
+
+```json
+{
+  "network": "base",
+  "actorAddress": "0x...",
+  "collateralAddress": "0x...",
+  "quoteAddress": "0x...",
+  "interestRate": "50000000000000000",
+  "maxAgeSeconds": 600
+}
+```
+
+This prepares one ERC20 Ajna factory deployment and rejects if the pool already
+exists for the provided collateral and quote token pair.
+
+### `prepare-create-erc721-pool`
+
+Collection pool:
+
+```json
+{
+  "network": "base",
+  "actorAddress": "0x...",
+  "collateralAddress": "0x...",
+  "quoteAddress": "0x...",
+  "interestRate": "50000000000000000",
+  "maxAgeSeconds": 600
+}
+```
+
+Subset pool:
+
+```json
+{
+  "network": "base",
+  "actorAddress": "0x...",
+  "collateralAddress": "0x...",
+  "quoteAddress": "0x...",
+  "interestRate": "50000000000000000",
+  "tokenIds": ["1", "2", "5"],
+  "maxAgeSeconds": 600
+}
+```
+
+If `tokenIds` is omitted or empty, the skill prepares a collection pool.
+Otherwise it normalizes the token IDs into a sorted unique subset before hashing
+them for Ajna pool lookup.
+
 ### `prepare-borrow`
 
 ```json
@@ -307,9 +358,8 @@ Example:
   "network": "base",
   "actorAddress": "0x...",
   "contractKind": "position-manager",
-  "abiFragment": "function memorializePositions(address,uint256[])",
   "methodName": "memorializePositions",
-  "args": ["0x...", ["1", "2"]],
+  "args": ["0x...", "123", ["1", "2"]],
   "acknowledgeRisk": "I understand this bypasses the stable skill surface",
   "notes": "operator requested unsupported Ajna action"
 }
@@ -317,7 +367,10 @@ Example:
 
 For pool calls, include `contractAddress`. For `position-manager` and
 `ajna-token`, the skill uses the built-in Ajna address for the selected network
-and rejects mismatches.
+and rejects mismatches. The skill now resolves the ABI from built-in Ajna
+contract ABIs by `contractKind`, so `abiFragment` is optional. Provide it only
+when you want to disambiguate an overloaded method or pin the exact signature
+explicitly.
 
 Operator approval for all owned NFTs:
 
@@ -346,7 +399,7 @@ Then:
 ```json
 {
   "preparedAction": {
-    "...": "result from prepare-lend or prepare-borrow"
+    "...": "result from any prepare-* command"
   }
 }
 ```
@@ -354,7 +407,9 @@ Then:
 Prepared payloads are signed when the local signer matches `actorAddress`. Unsigned
 prepared payloads are valid for dry runs, but execution rejects them. Executable
 payloads are also bound to the actor's pending nonce, so retries after any other
-signer activity require a fresh prepare step.
+signer activity require a fresh prepare step. For pool-creation payloads, the
+execute result also attempts to include `resolvedPoolAddress` after the factory
+transaction confirms.
 
 ## Unsupported Action Notes
 
