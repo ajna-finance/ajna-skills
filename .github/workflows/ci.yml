@@ -26,3 +26,35 @@ jobs:
       - name: Unit test
         run: npm test
 
+  fork-execute:
+    if: ${{ vars.AJNA_ENABLE_FORK_TESTS == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      AJNA_BASE_FORK_URL: ${{ secrets.AJNA_BASE_FORK_URL }}
+      AJNA_BASE_FORK_BLOCK_NUMBER: ${{ vars.AJNA_BASE_FORK_BLOCK_NUMBER }}
+      AJNA_TEST_POOL_ADDRESS: ${{ vars.AJNA_TEST_POOL_ADDRESS }}
+      AJNA_TEST_BUCKET_INDEX: ${{ vars.AJNA_TEST_BUCKET_INDEX }}
+      AJNA_TEST_FUND_AMOUNT_RAW: ${{ vars.AJNA_TEST_FUND_AMOUNT_RAW }}
+      AJNA_TEST_LEND_AMOUNT_WAD: ${{ vars.AJNA_TEST_LEND_AMOUNT_WAD || vars.AJNA_TEST_LEND_AMOUNT }}
+      AJNA_TEST_QUOTE_WHALE: ${{ vars.AJNA_TEST_QUOTE_WHALE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Fork execute test
+        run: npm run test:fork

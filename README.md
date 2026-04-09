@@ -66,6 +66,31 @@ export AJNA_TEST_POOL_ADDRESS="0x..."
 npm run test:chain
 ```
 
+Optional fork-backed execute test:
+
+```bash
+export AJNA_BASE_FORK_URL="https://..."
+export AJNA_BASE_FORK_BLOCK_NUMBER=44450000
+export AJNA_TEST_POOL_ADDRESS="0x97dbbdba28df6d629bc17e0349bcb73d541ed041"
+export AJNA_TEST_BUCKET_INDEX=3232
+export AJNA_TEST_FUND_AMOUNT_RAW=100000000
+export AJNA_TEST_LEND_AMOUNT_WAD=100000000000000000000
+export AJNA_TEST_TTL_SECONDS=31536000
+export AJNA_TEST_QUOTE_WHALE="0xee7ae85f2fe2239e27d9c1e23fffe168d63b4055"
+npm run test:fork
+```
+
+This path starts a local Anvil fork, runs one real `prepare-lend -> execute-prepared`
+flow, then asserts that replaying the same prepared payload fails once the signer
+nonce has moved. Set `AJNA_BASE_FORK_BLOCK_NUMBER` in CI if you want deterministic
+state across runs. `AJNA_TEST_TTL_SECONDS` exists so old pinned blocks do not fail
+only because the prepared payload expired relative to wall-clock time. Foundry is
+only needed for this optional test path. `AJNA_TEST_FUND_AMOUNT_RAW` is the quote
+token transfer amount in native token units, while `AJNA_TEST_LEND_AMOUNT_WAD` is
+the Ajna lend amount in WAD precision. For backward compatibility, the fork runner
+still accepts the older `AJNA_TEST_LEND_AMOUNT` name as a fallback for the WAD
+value.
+
 ## Runtime model
 
 The skill itself lives at repo root so it can be installed directly into common

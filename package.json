@@ -16,7 +16,8 @@
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:chain": "vitest run tests/chain.test.ts"
+    "test:chain": "vitest run tests/chain.test.ts",
+    "test:fork": "./scripts/run-fork-test.sh"
   },
   "dependencies": {
     "@ajna-finance/sdk": "^0.4.7",
