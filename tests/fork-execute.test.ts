@@ -7,8 +7,10 @@ import {
   runPrepareApproveErc20,
   runPrepareApproveErc721,
   runPrepareBorrow,
-  runPrepareLend
+  runPrepareLend,
+  runPrepareUnsupportedAjnaAction
 } from "../src/actions.js";
+import { UNSAFE_SDK_CALL_ACKNOWLEDGEMENT } from "../src/constants.js";
 
 const ANVIL_DEFAULT_PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -125,6 +127,7 @@ describe("fork-backed execute flow", () => {
   const runBorrow = shouldRunBorrow ? it : it.skip;
   const runApproveErc20 = shouldRunApproveErc20 ? it : it.skip;
   const runApproveErc721 = shouldRunApproveErc721 ? it : it.skip;
+  const runUnsupportedErc20Pool = shouldRunBase ? it : it.skip;
 
   runLend("executes a prepared lend and rejects replay after the nonce changes", async () => {
     const rpcUrl = process.env.AJNA_RPC_URL_BASE!;
@@ -277,12 +280,17 @@ describe("fork-backed execute flow", () => {
         amountRaw: fundAmountRaw
       });
 
+      const existingAllowance = await quoteToken.allowance(signerAddress, poolAddress);
+      const requestedAmount = existingAllowance.gte(fundAmountRaw)
+        ? existingAllowance.add(1)
+        : ethers.BigNumber.from(fundAmountRaw);
+
       const preparedAction = await runPrepareApproveErc20({
         network: "base",
         actorAddress: signerAddress,
         tokenAddress: quoteTokenAddress,
         poolAddress,
-        amount: fundAmountRaw,
+        amount: requestedAmount.toString(),
         approvalMode: "exact",
         maxAgeSeconds
       });
@@ -295,7 +303,7 @@ describe("fork-backed execute flow", () => {
       });
 
       expect(result.submitted).toHaveLength(1);
-      expect(await quoteToken.allowance(signerAddress, poolAddress)).toEqual(ethers.BigNumber.from(fundAmountRaw));
+      expect(await quoteToken.allowance(signerAddress, poolAddress)).toEqual(requestedAmount);
 
       await expect(
         runExecutePrepared({
@@ -367,4 +375,64 @@ describe("fork-backed execute flow", () => {
       });
     });
   }, 120_000);
+
+  runUnsupportedErc20Pool(
+    "executes an unsupported erc20-pool updateInterest action and rejects replay after the nonce changes",
+    async () => {
+      const rpcUrl = process.env.AJNA_RPC_URL_BASE!;
+      const poolAddress = process.env.AJNA_TEST_POOL_ADDRESS!;
+      const signerPrivateKey = process.env.AJNA_FORK_SIGNER_PRIVATE_KEY ?? ANVIL_DEFAULT_PRIVATE_KEY;
+      const previousUnsafeGate = process.env.AJNA_ENABLE_UNSAFE_SDK_CALLS;
+
+      await withForkSnapshot(rpcUrl, async (provider) => {
+        const signer = new ethers.Wallet(signerPrivateKey, provider);
+        const signerAddress = await signer.getAddress();
+
+        process.env.AJNA_SKILLS_MODE = "execute";
+        process.env.AJNA_SIGNER_PRIVATE_KEY = signerPrivateKey;
+        process.env.AJNA_ENABLE_UNSAFE_SDK_CALLS = "1";
+
+        try {
+          const preparedAction = await runPrepareUnsupportedAjnaAction({
+            network: "base",
+            actorAddress: signerAddress,
+            contractKind: "erc20-pool",
+            contractAddress: poolAddress,
+            abiFragment: "function updateInterest()",
+            methodName: "updateInterest",
+            args: [],
+            acknowledgeRisk: UNSAFE_SDK_CALL_ACKNOWLEDGEMENT,
+            notes: "fork test for unsupported erc20-pool updateInterest"
+          });
+
+          expect(preparedAction.transactions).toHaveLength(1);
+          expect(preparedAction.transactions[0]?.target).toBe(ethers.utils.getAddress(poolAddress));
+
+          const result = await runExecutePrepared({
+            preparedAction,
+            confirmations: 1
+          });
+
+          expect(result.submitted).toHaveLength(1);
+          expect(result.submitted[0]?.status).toBe(1);
+
+          await expect(
+            runExecutePrepared({
+              preparedAction,
+              confirmations: 1
+            })
+          ).rejects.toMatchObject({
+            code: "PREPARED_NONCE_STALE"
+          });
+        } finally {
+          if (previousUnsafeGate === undefined) {
+            delete process.env.AJNA_ENABLE_UNSAFE_SDK_CALLS;
+          } else {
+            process.env.AJNA_ENABLE_UNSAFE_SDK_CALLS = previousUnsafeGate;
+          }
+        }
+      });
+    },
+    120_000
+  );
 });
