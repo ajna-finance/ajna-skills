@@ -11,6 +11,8 @@ This repo is intentionally scoped to one shipped thing in v1:
 - one signer model, a local EVM private key
 - one execute contract, prepare first then execute
 - two officially supported runtimes, OpenClaw and Hermes
+- wrong-chain RPC rejection before any action executes
+- one-shot prepared payloads bound to the actor nonce at prepare time
 
 ## Status
 
@@ -88,6 +90,8 @@ npx skills add <owner>/<repo>
 - prepare never sends a transaction
 - execute only accepts a previously prepared payload
 - execute requires a local signer and explicit policy mode
+- execute rejects RPC endpoints that resolve to the wrong chain
+- execute rejects prepared payloads once the signer nonce has moved, re-prepare instead
 
 ## JSON command contract
 
@@ -184,4 +188,6 @@ Then:
 ```
 
 Prepared payloads are signed when the local signer matches `actorAddress`. Unsigned
-prepared payloads are valid for dry runs, but execution rejects them.
+prepared payloads are valid for dry runs, but execution rejects them. Executable
+payloads are also bound to the actor's pending nonce, so retries after any other
+signer activity require a fresh prepare step.

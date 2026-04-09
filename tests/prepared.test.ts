@@ -42,6 +42,7 @@ describe("prepared action integrity", () => {
         network: "base",
         chainId: 8453,
         actorAddress: wallet.address,
+        startingNonce: 7,
         poolAddress: "0x0000000000000000000000000000000000000100",
         quoteAddress: "0x0000000000000000000000000000000000000101",
         collateralAddress: "0x0000000000000000000000000000000000000102",
@@ -104,6 +105,7 @@ describe("prepared action integrity", () => {
         network: "base",
         chainId: 8453,
         actorAddress: wallet.address,
+        startingNonce: 11,
         poolAddress: "0x0000000000000000000000000000000000000100",
         quoteAddress: "0x0000000000000000000000000000000000000101",
         collateralAddress: "0x0000000000000000000000000000000000000102",
@@ -136,4 +138,3 @@ describe("prepared action integrity", () => {
     expect(() => validatePreparedAction(tampered, runtime)).toThrow(/digest/i);
   });
 });
-

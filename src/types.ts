@@ -64,6 +64,7 @@ export interface PreparedAction {
   network: AjnaNetwork;
   chainId: number;
   actorAddress: string;
+  startingNonce: number;
   poolAddress: string;
   quoteAddress: string;
   collateralAddress: string;

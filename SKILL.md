@@ -76,6 +76,8 @@ node dist/cli.js execute-prepared '{"preparedAction":{...}}'
   then review the prepared payload, then execute.
 - `execute-prepared` only works in `AJNA_SKILLS_MODE=execute`.
 - If a prepared payload is unsigned, stale, or mutated, execution should fail.
+- If the RPC endpoint resolves to the wrong chain, fail before any transaction send.
+- If the signer nonce changed since prepare time, re-prepare instead of retrying.
 - If you are missing RPC or signer config, fail clearly instead of guessing.
 
 ## Notes
@@ -83,4 +85,3 @@ node dist/cli.js execute-prepared '{"preparedAction":{...}}'
 - v1 officially supports OpenClaw and Hermes only.
 - The skill stays inside the shared AgentSkills subset to keep behavior portable.
 - v1 currently targets ERC20 pools only.
-

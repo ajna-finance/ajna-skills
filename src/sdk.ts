@@ -32,7 +32,7 @@ export class AjnaAdapter {
 
   async inspectPool(input: InspectPoolInput): Promise<PoolInspectionResult> {
     const network = this.network(input.network);
-    const provider = this.provider(network);
+    const provider = await this.provider(network);
     const poolAddress = await this.resolvePoolAddress(input, network, provider);
     const pool = ERC20Pool__factory.connect(poolAddress, provider);
     const poolInfoUtils = PoolInfoUtils__factory.connect(network.poolInfoUtils, provider);
@@ -82,7 +82,7 @@ export class AjnaAdapter {
 
   async inspectPosition(input: InspectPositionInput): Promise<Record<string, unknown>> {
     const network = this.network(input.network);
-    const provider = this.provider(network);
+    const provider = await this.provider(network);
     const poolAddress = await this.resolvePoolAddress(input, network, provider);
     const owner = ethers.utils.getAddress(input.owner);
     const pool = ERC20Pool__factory.connect(poolAddress, provider);
@@ -132,11 +132,12 @@ export class AjnaAdapter {
 
   async prepareLend(input: PrepareLendInput): Promise<PreparedAction> {
     const network = this.network(input.network);
-    const provider = this.provider(network);
+    const provider = await this.provider(network);
     const poolAddress = await this.resolvePoolAddress(input, network, provider);
     const actorAddress = ethers.utils.getAddress(input.actorAddress);
     const amount = BigNumber.from(input.amount);
     const approvalMode = input.approvalMode ?? "exact";
+    const startingNonce = await provider.getTransactionCount(actorAddress, "pending");
     const pool = ERC20Pool__factory.connect(poolAddress, provider);
     const quoteAddress = await pool.quoteTokenAddress();
     const collateralAddress = await pool.collateralAddress();
@@ -171,6 +172,7 @@ export class AjnaAdapter {
         network: input.network,
         chainId: network.chainId,
         actorAddress,
+        startingNonce,
         poolAddress,
         quoteAddress,
         collateralAddress,
@@ -189,12 +191,13 @@ export class AjnaAdapter {
 
   async prepareBorrow(input: PrepareBorrowInput): Promise<PreparedAction> {
     const network = this.network(input.network);
-    const provider = this.provider(network);
+    const provider = await this.provider(network);
     const poolAddress = await this.resolvePoolAddress(input, network, provider);
     const actorAddress = ethers.utils.getAddress(input.actorAddress);
     const amount = BigNumber.from(input.amount);
     const collateralAmount = BigNumber.from(input.collateralAmount);
     const approvalMode = input.approvalMode ?? "exact";
+    const startingNonce = await provider.getTransactionCount(actorAddress, "pending");
     const pool = ERC20Pool__factory.connect(poolAddress, provider);
     const quoteAddress = await pool.quoteTokenAddress();
     const collateralAddress = await pool.collateralAddress();
@@ -237,6 +240,7 @@ export class AjnaAdapter {
         network: input.network,
         chainId: network.chainId,
         actorAddress,
+        startingNonce,
         poolAddress,
         quoteAddress,
         collateralAddress,
@@ -267,14 +271,16 @@ export class AjnaAdapter {
     return config;
   }
 
-  private provider(network: RuntimeNetworkConfig): ethers.providers.JsonRpcProvider {
+  private async provider(network: RuntimeNetworkConfig): Promise<ethers.providers.JsonRpcProvider> {
     Config.poolUtils = network.poolInfoUtils;
     Config.erc20PoolFactory = network.erc20PoolFactory;
     Config.erc721PoolFactory = network.erc721PoolFactory;
     Config.positionManager = network.positionManager;
     Config.ajnaToken = network.ajnaToken;
 
-    return new ethers.providers.JsonRpcProvider(network.rpcUrl, network.chainId);
+    const provider = new ethers.providers.JsonRpcProvider(network.rpcUrl, network.chainId);
+    await assertProviderMatchesNetwork(provider, network);
+    return provider;
   }
 
   private async resolvePoolAddress(
@@ -389,4 +395,23 @@ export class AjnaAdapter {
       verificationError
     };
   }
+}
+
+export async function assertProviderMatchesNetwork(
+  provider: Pick<ethers.providers.JsonRpcProvider, "getNetwork">,
+  network: RuntimeNetworkConfig
+): Promise<void> {
+  const actualNetwork = await provider.getNetwork();
+
+  invariant(
+    actualNetwork.chainId === network.chainId,
+    "RPC_CHAIN_MISMATCH",
+    `RPC URL for ${network.network} resolved to the wrong chain`,
+    {
+      network: network.network,
+      expectedChainId: network.chainId,
+      actualChainId: actualNetwork.chainId,
+      actualName: actualNetwork.name
+    }
+  );
 }

@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { loadRuntimeConfig } from "./config.js";
 import { AjnaSkillError, invariant } from "./errors.js";
 import { validatePreparedAction } from "./prepared.js";
-import { AjnaAdapter } from "./sdk.js";
+import { AjnaAdapter, assertProviderMatchesNetwork } from "./sdk.js";
 import type {
   ExecutePreparedInput,
   ExecutePreparedResult,
@@ -65,6 +65,7 @@ export async function runExecutePrepared(
     }
   );
   const provider = new ethers.providers.JsonRpcProvider(network.rpcUrl, network.chainId);
+  await assertProviderMatchesNetwork(provider, network);
   const signer = new ethers.Wallet(runtime.signerPrivateKey, provider);
   const signerAddress = await signer.getAddress();
 
@@ -74,15 +75,39 @@ export async function runExecutePrepared(
     "Configured signer does not match prepared actor address"
   );
 
+  const currentPendingNonce = await provider.getTransactionCount(signerAddress, "pending");
+  invariant(
+    currentPendingNonce === input.preparedAction.startingNonce,
+    "PREPARED_NONCE_STALE",
+    "Prepared action is stale because the signer nonce changed",
+    {
+      expectedStartingNonce: input.preparedAction.startingNonce,
+      currentPendingNonce
+    }
+  );
+
   const confirmations = input.confirmations ?? 1;
   const submitted: ExecutePreparedResult["submitted"] = [];
 
-  for (const tx of input.preparedAction.transactions) {
+  for (const [index, tx] of input.preparedAction.transactions.entries()) {
+    const expectedNonce = input.preparedAction.startingNonce + index;
+    invariant(
+      tx.nonce === undefined || tx.nonce === expectedNonce,
+      "PREPARED_TRANSACTION_NONCE_MISMATCH",
+      "Prepared transaction nonce does not match expected execution sequence",
+      {
+        label: tx.label,
+        preparedNonce: tx.nonce,
+        expectedNonce
+      }
+    );
+
     const estimateInput: ethers.providers.TransactionRequest = {
       to: tx.target,
       data: tx.data,
       value: ethers.BigNumber.from(tx.value),
-      from: signerAddress
+      from: signerAddress,
+      nonce: expectedNonce
     };
 
     let gasEstimate: ethers.BigNumber;

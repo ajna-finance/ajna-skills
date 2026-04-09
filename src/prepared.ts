@@ -41,6 +41,14 @@ export function validatePreparedAction(
   runtime: RuntimeConfig
 ): void {
   invariant(preparedAction.version === 1, "INVALID_PREPARED_VERSION", "Unsupported prepared action version");
+  invariant(
+    Number.isInteger(preparedAction.startingNonce) && preparedAction.startingNonce >= 0,
+    "INVALID_PREPARED_NONCE",
+    "Prepared action starting nonce must be a non-negative integer",
+    {
+      startingNonce: preparedAction.startingNonce
+    }
+  );
 
   const unsigned: UnsignedPreparedAction = {
     version: preparedAction.version,
@@ -48,6 +56,7 @@ export function validatePreparedAction(
     network: preparedAction.network,
     chainId: preparedAction.chainId,
     actorAddress: preparedAction.actorAddress,
+    startingNonce: preparedAction.startingNonce,
     poolAddress: preparedAction.poolAddress,
     quoteAddress: preparedAction.quoteAddress,
     collateralAddress: preparedAction.collateralAddress,
@@ -114,4 +123,3 @@ function sameAddress(left: string, right: string): boolean {
     });
   }
 }
-
