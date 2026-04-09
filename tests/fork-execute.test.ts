@@ -2,12 +2,24 @@ import { ERC20__factory, ERC20Pool__factory } from "@ajna-finance/sdk";
 import { ethers } from "ethers";
 import { describe, expect, it } from "vitest";
 
-import { runExecutePrepared, runPrepareBorrow, runPrepareLend } from "../src/actions.js";
+import {
+  runExecutePrepared,
+  runPrepareApproveErc20,
+  runPrepareApproveErc721,
+  runPrepareBorrow,
+  runPrepareLend
+} from "../src/actions.js";
 
 const ANVIL_DEFAULT_PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const WHALE_ETH_BALANCE_HEX = "0x8AC7230489E80000";
 const DEFAULT_FORK_TTL_SECONDS = 365 * 24 * 60 * 60;
+const ERC721_TEST_ABI = [
+  "function ownerOf(uint256 tokenId) view returns (address)",
+  "function getApproved(uint256 tokenId) view returns (address)",
+  "function isApprovedForAll(address owner, address operator) view returns (bool)",
+  "function transferFrom(address from, address to, uint256 tokenId)"
+] as const;
 
 const shouldRunBase =
   process.env.RUN_AJNA_FORK_TESTS === "1" &&
@@ -28,6 +40,17 @@ const shouldRunBorrow =
   Boolean(process.env.AJNA_TEST_COLLATERAL_AMOUNT_WAD) &&
   Boolean(process.env.AJNA_TEST_BORROW_AMOUNT_WAD) &&
   Boolean(process.env.AJNA_TEST_COLLATERAL_WHALE);
+
+const shouldRunApproveErc20 =
+  shouldRunBase &&
+  Boolean(process.env.AJNA_TEST_FUND_AMOUNT_RAW) &&
+  Boolean(process.env.AJNA_TEST_QUOTE_WHALE);
+
+const shouldRunApproveErc721 =
+  shouldRunBase &&
+  Boolean(process.env.AJNA_TEST_ERC721_TOKEN_ADDRESS) &&
+  Boolean(process.env.AJNA_TEST_ERC721_TOKEN_ID) &&
+  Boolean(process.env.AJNA_TEST_ERC721_HOLDER);
 
 async function withForkSnapshot<T>(
   rpcUrl: string,
@@ -70,9 +93,38 @@ async function fundTokenFromWhale({
   }
 }
 
+async function transferNftFromHolder({
+  provider,
+  tokenAddress,
+  holderAddress,
+  recipientAddress,
+  tokenId
+}: {
+  provider: ethers.providers.JsonRpcProvider;
+  tokenAddress: string;
+  holderAddress: string;
+  recipientAddress: string;
+  tokenId: string;
+}) {
+  const token = new ethers.Contract(tokenAddress, ERC721_TEST_ABI, provider);
+
+  await provider.send("anvil_setBalance", [holderAddress, WHALE_ETH_BALANCE_HEX]);
+  await provider.send("anvil_impersonateAccount", [holderAddress]);
+
+  try {
+    const holderSigner = provider.getSigner(holderAddress);
+    const transfer = await token.connect(holderSigner).transferFrom(holderAddress, recipientAddress, tokenId);
+    await transfer.wait(1);
+  } finally {
+    await provider.send("anvil_stopImpersonatingAccount", [holderAddress]);
+  }
+}
+
 describe("fork-backed execute flow", () => {
   const runLend = shouldRunLend ? it : it.skip;
   const runBorrow = shouldRunBorrow ? it : it.skip;
+  const runApproveErc20 = shouldRunApproveErc20 ? it : it.skip;
+  const runApproveErc721 = shouldRunApproveErc721 ? it : it.skip;
 
   runLend("executes a prepared lend and rejects replay after the nonce changes", async () => {
     const rpcUrl = process.env.AJNA_RPC_URL_BASE!;
@@ -184,6 +236,126 @@ describe("fork-backed execute flow", () => {
       });
 
       expect(result.submitted.length).toBe(preparedAction.transactions.length);
+
+      await expect(
+        runExecutePrepared({
+          preparedAction,
+          confirmations: 1
+        })
+      ).rejects.toMatchObject({
+        code: "PREPARED_NONCE_STALE"
+      });
+    });
+  }, 120_000);
+
+  runApproveErc20("executes a standalone ERC20 approval and rejects replay after the nonce changes", async () => {
+    const rpcUrl = process.env.AJNA_RPC_URL_BASE!;
+    const poolAddress = process.env.AJNA_TEST_POOL_ADDRESS!;
+    const fundAmountRaw = process.env.AJNA_TEST_FUND_AMOUNT_RAW!;
+    const quoteWhale = ethers.utils.getAddress(process.env.AJNA_TEST_QUOTE_WHALE!);
+    const signerPrivateKey = process.env.AJNA_FORK_SIGNER_PRIVATE_KEY ?? ANVIL_DEFAULT_PRIVATE_KEY;
+    const maxAgeSeconds = Number.parseInt(
+      process.env.AJNA_TEST_TTL_SECONDS ?? String(DEFAULT_FORK_TTL_SECONDS),
+      10
+    );
+
+    await withForkSnapshot(rpcUrl, async (provider) => {
+      const signer = new ethers.Wallet(signerPrivateKey, provider);
+      const signerAddress = await signer.getAddress();
+      const pool = ERC20Pool__factory.connect(poolAddress, provider);
+      const quoteTokenAddress = await pool.quoteTokenAddress();
+      const quoteToken = ERC20__factory.connect(quoteTokenAddress, provider);
+
+      process.env.AJNA_SKILLS_MODE = "execute";
+      process.env.AJNA_SIGNER_PRIVATE_KEY = signerPrivateKey;
+
+      await fundTokenFromWhale({
+        provider,
+        tokenAddress: quoteTokenAddress,
+        whaleAddress: quoteWhale,
+        recipientAddress: signerAddress,
+        amountRaw: fundAmountRaw
+      });
+
+      const preparedAction = await runPrepareApproveErc20({
+        network: "base",
+        actorAddress: signerAddress,
+        tokenAddress: quoteTokenAddress,
+        poolAddress,
+        amount: fundAmountRaw,
+        approvalMode: "exact",
+        maxAgeSeconds
+      });
+
+      expect(preparedAction.transactions).toHaveLength(1);
+
+      const result = await runExecutePrepared({
+        preparedAction,
+        confirmations: 1
+      });
+
+      expect(result.submitted).toHaveLength(1);
+      expect(await quoteToken.allowance(signerAddress, poolAddress)).toEqual(ethers.BigNumber.from(fundAmountRaw));
+
+      await expect(
+        runExecutePrepared({
+          preparedAction,
+          confirmations: 1
+        })
+      ).rejects.toMatchObject({
+        code: "PREPARED_NONCE_STALE"
+      });
+    });
+  }, 120_000);
+
+  runApproveErc721("executes a standalone ERC721 approval and rejects replay after the nonce changes", async () => {
+    const rpcUrl = process.env.AJNA_RPC_URL_BASE!;
+    const poolAddress = process.env.AJNA_TEST_POOL_ADDRESS!;
+    const tokenAddress = ethers.utils.getAddress(process.env.AJNA_TEST_ERC721_TOKEN_ADDRESS!);
+    const tokenId = process.env.AJNA_TEST_ERC721_TOKEN_ID!;
+    const holderAddress = ethers.utils.getAddress(process.env.AJNA_TEST_ERC721_HOLDER!);
+    const signerPrivateKey = process.env.AJNA_FORK_SIGNER_PRIVATE_KEY ?? ANVIL_DEFAULT_PRIVATE_KEY;
+    const maxAgeSeconds = Number.parseInt(
+      process.env.AJNA_TEST_TTL_SECONDS ?? String(DEFAULT_FORK_TTL_SECONDS),
+      10
+    );
+
+    await withForkSnapshot(rpcUrl, async (provider) => {
+      const signer = new ethers.Wallet(signerPrivateKey, provider);
+      const signerAddress = await signer.getAddress();
+      const token = new ethers.Contract(tokenAddress, ERC721_TEST_ABI, provider);
+
+      process.env.AJNA_SKILLS_MODE = "execute";
+      process.env.AJNA_SIGNER_PRIVATE_KEY = signerPrivateKey;
+
+      await transferNftFromHolder({
+        provider,
+        tokenAddress,
+        holderAddress,
+        recipientAddress: signerAddress,
+        tokenId
+      });
+
+      expect(await token.ownerOf(tokenId)).toBe(ethers.utils.getAddress(signerAddress));
+
+      const preparedAction = await runPrepareApproveErc721({
+        network: "base",
+        actorAddress: signerAddress,
+        tokenAddress,
+        poolAddress,
+        tokenId,
+        maxAgeSeconds
+      });
+
+      expect(preparedAction.transactions).toHaveLength(1);
+
+      const result = await runExecutePrepared({
+        preparedAction,
+        confirmations: 1
+      });
+
+      expect(result.submitted).toHaveLength(1);
+      expect(await token.getApproved(tokenId)).toBe(ethers.utils.getAddress(poolAddress));
 
       await expect(
         runExecutePrepared({

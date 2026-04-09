@@ -84,15 +84,19 @@ export AJNA_TEST_BORROW_AMOUNT_WAD=1000000000000000000
 export AJNA_TEST_TTL_SECONDS=31536000
 export AJNA_TEST_QUOTE_WHALE="0xee7ae85f2fe2239e27d9c1e23fffe168d63b4055"
 export AJNA_TEST_COLLATERAL_WHALE="0x78f691c07e58fa6808e77915027ea1ca883d721d"
+export AJNA_TEST_ERC721_TOKEN_ADDRESS="0x3c1027c40c281835e38d7950d74b3de5f9d21ef4"
+export AJNA_TEST_ERC721_TOKEN_ID=1
+export AJNA_TEST_ERC721_HOLDER="0x75360e6aDe76eA0258BA195Ca0905c5A5D354f68"
 npm run test:fork
 ```
 
 This path starts a local Anvil fork, runs real `prepare-* -> execute-prepared`
-flows for both lend and borrow, then asserts that replaying the same prepared
-payload fails once the signer nonce has moved. Set `AJNA_BASE_FORK_BLOCK_NUMBER`
-in CI if you want deterministic state across runs. `AJNA_TEST_TTL_SECONDS` exists
-so old pinned blocks do not fail only because the prepared payload expired relative
-to wall-clock time. Foundry is only needed for this optional test path.
+flows for lend, borrow, standalone ERC20 approval, and standalone ERC721 approval,
+then asserts that replaying the same prepared payload fails once the signer nonce
+has moved. Set `AJNA_BASE_FORK_BLOCK_NUMBER` in CI if you want deterministic state
+across runs. `AJNA_TEST_TTL_SECONDS` exists so old pinned blocks do not fail only
+because the prepared payload expired relative to wall-clock time. Foundry is only
+needed for this optional test path.
 
 `AJNA_TEST_FUND_AMOUNT_RAW` is the quote-token transfer amount in native token
 units, while `AJNA_TEST_LEND_AMOUNT_WAD` is the Ajna lend amount in WAD precision.
@@ -100,7 +104,9 @@ For backward compatibility, the fork runner still accepts the older
 `AJNA_TEST_LEND_AMOUNT` name as a fallback for the WAD value. The borrow fixture
 uses the same pinned pool and block, with `AJNA_TEST_COLLATERAL_FUND_AMOUNT_RAW`
 for the AERO transfer, `AJNA_TEST_COLLATERAL_AMOUNT_WAD` for pledged collateral,
-and `AJNA_TEST_BORROW_AMOUNT_WAD` for the borrowed USDC amount.
+and `AJNA_TEST_BORROW_AMOUNT_WAD` for the borrowed USDC amount. The ERC721 fixture
+uses Ratbase token `1`, transferred from a pinned holder to the test signer before
+executing a standalone approval to the pool target.
 
 ## Runtime model
 
