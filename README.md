@@ -25,6 +25,8 @@ Pre-v1. This repo is being built to match the approved design and eng review in
 - `inspect-position`
 - `prepare-lend`
 - `prepare-borrow`
+- `prepare-approve-erc20`
+- `prepare-approve-erc721`
 - `execute-prepared`
 
 Each command will accept a single JSON payload and print normalized JSON output.
@@ -198,6 +200,48 @@ Lender bucket position:
   "collateralAmount": "2000000000000000000",
   "limitIndex": 3232,
   "approvalMode": "exact",
+  "maxAgeSeconds": 600
+}
+```
+
+### `prepare-approve-erc20`
+
+```json
+{
+  "network": "base",
+  "actorAddress": "0x...",
+  "tokenAddress": "0x...",
+  "poolAddress": "0x...",
+  "amount": "1000000000000000000",
+  "approvalMode": "exact",
+  "maxAgeSeconds": 600
+}
+```
+
+### `prepare-approve-erc721`
+
+Single-token approval:
+
+```json
+{
+  "network": "base",
+  "actorAddress": "0x...",
+  "tokenAddress": "0x...",
+  "poolAddress": "0x...",
+  "tokenId": "123",
+  "maxAgeSeconds": 600
+}
+```
+
+Operator approval for all owned NFTs:
+
+```json
+{
+  "network": "base",
+  "actorAddress": "0x...",
+  "tokenAddress": "0x...",
+  "poolAddress": "0x...",
+  "approveForAll": true,
   "maxAgeSeconds": 600
 }
 ```

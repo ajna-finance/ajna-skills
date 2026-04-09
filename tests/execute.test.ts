@@ -144,6 +144,13 @@ describe("runExecutePrepared", () => {
             from: wallet.address
           },
           {
+            label: "approval",
+            target: "0x0000000000000000000000000000000000000102",
+            value: "0",
+            data: "0xcccc",
+            from: wallet.address
+          },
+          {
             label: "action",
             target: "0x0000000000000000000000000000000000000100",
             value: "0",
@@ -187,8 +194,8 @@ describe("runExecutePrepared", () => {
 
     const result = await runExecutePrepared({ preparedAction });
 
-    expect(nonces).toEqual([9, 10]);
-    expect(result.submitted).toHaveLength(2);
-    expect(result.submitted.map((entry) => entry.label)).toEqual(["approval", "action"]);
+    expect(nonces).toEqual([9, 10, 11]);
+    expect(result.submitted).toHaveLength(3);
+    expect(result.submitted.map((entry) => entry.label)).toEqual(["approval", "approval", "action"]);
   });
 });

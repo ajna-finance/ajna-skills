@@ -17,6 +17,8 @@ import type {
   InspectPositionInput,
   PoolInspectionResult,
   PreparedAction,
+  PrepareApproveErc20Input,
+  PrepareApproveErc721Input,
   PrepareBorrowInput,
   PrepareLendInput,
   RuntimeConfig,
@@ -26,6 +28,13 @@ import type {
 type TransactionLike = Awaited<ReturnType<typeof createTransaction>> & {
   _transaction?: ethers.providers.TransactionRequest;
 };
+
+const ERC721_APPROVAL_ABI = [
+  "function approve(address to, uint256 tokenId)",
+  "function getApproved(uint256 tokenId) view returns (address)",
+  "function isApprovedForAll(address owner, address operator) view returns (bool)",
+  "function setApprovalForAll(address operator, bool approved)"
+] as const;
 
 export class AjnaAdapter {
   constructor(private readonly runtime: RuntimeConfig) {}
@@ -252,6 +261,165 @@ export class AjnaAdapter {
           collateralAmount: collateralAmount.toString(),
           limitIndex: input.limitIndex,
           approvalMode
+        }
+      },
+      this.runtime
+    );
+  }
+
+  async prepareApproveErc20(input: PrepareApproveErc20Input): Promise<PreparedAction> {
+    const network = this.network(input.network);
+    const provider = await this.provider(network);
+    const actorAddress = ethers.utils.getAddress(input.actorAddress);
+    const approvalTarget = ethers.utils.getAddress(input.poolAddress);
+    const tokenAddress = ethers.utils.getAddress(input.tokenAddress);
+    const amount = BigNumber.from(input.amount);
+    const approvalMode = input.approvalMode ?? "exact";
+    const startingNonce = await provider.getTransactionCount(actorAddress, "pending");
+    const approval = await this.checkAllowance(provider, tokenAddress, actorAddress, approvalTarget, amount);
+    const expiresAt = new Date(
+      Date.now() + (input.maxAgeSeconds ?? DEFAULT_PREPARED_MAX_AGE_SECONDS) * 1000
+    ).toISOString();
+    const transactions = [];
+
+    if (approval.current.lt(approval.needed)) {
+      const approveTx = await this.prepareContractTransaction({
+        contract: ERC20__factory.connect(tokenAddress, provider),
+        methodName: "approve",
+        args: [approval.approvalTarget, approvalMode === "max" ? ethers.constants.MaxUint256 : amount],
+        from: actorAddress,
+        label: "approval"
+      });
+      transactions.push(approveTx);
+    }
+
+    return finalizePreparedAction(
+      {
+        version: 1,
+        kind: "approve-erc20",
+        network: input.network,
+        chainId: network.chainId,
+        actorAddress,
+        startingNonce,
+        poolAddress: approvalTarget,
+        quoteAddress: tokenAddress,
+        collateralAddress: tokenAddress,
+        createdAt: new Date().toISOString(),
+        expiresAt,
+        transactions,
+        metadata: {
+          tokenStandard: "erc20",
+          tokenAddress,
+          approvalTarget,
+          amount: amount.toString(),
+          approvalMode,
+          alreadyApproved: approval.current.gte(approval.needed)
+        }
+      },
+      this.runtime
+    );
+  }
+
+  async prepareApproveErc721(input: PrepareApproveErc721Input): Promise<PreparedAction> {
+    const network = this.network(input.network);
+    const provider = await this.provider(network);
+    const actorAddress = ethers.utils.getAddress(input.actorAddress);
+    const approvalTarget = ethers.utils.getAddress(input.poolAddress);
+    const tokenAddress = ethers.utils.getAddress(input.tokenAddress);
+    const approveForAll = input.approveForAll ?? false;
+    const startingNonce = await provider.getTransactionCount(actorAddress, "pending");
+    const token = new ethers.Contract(tokenAddress, ERC721_APPROVAL_ABI, provider);
+    const expiresAt = new Date(
+      Date.now() + (input.maxAgeSeconds ?? DEFAULT_PREPARED_MAX_AGE_SECONDS) * 1000
+    ).toISOString();
+    const transactions = [];
+
+    if (approveForAll) {
+      const alreadyApproved = await token.isApprovedForAll(actorAddress, approvalTarget);
+
+      if (!alreadyApproved) {
+        const approveTx = await this.prepareContractTransaction({
+          contract: token,
+          methodName: "setApprovalForAll",
+          args: [approvalTarget, true],
+          from: actorAddress,
+          label: "approval"
+        });
+        transactions.push(approveTx);
+      }
+
+      return finalizePreparedAction(
+        {
+          version: 1,
+          kind: "approve-erc721",
+          network: input.network,
+          chainId: network.chainId,
+          actorAddress,
+          startingNonce,
+          poolAddress: approvalTarget,
+          quoteAddress: tokenAddress,
+          collateralAddress: tokenAddress,
+          createdAt: new Date().toISOString(),
+          expiresAt,
+          transactions,
+          metadata: {
+            tokenStandard: "erc721",
+            tokenAddress,
+            approvalTarget,
+            approveForAll: true,
+            alreadyApproved
+          }
+        },
+        this.runtime
+      );
+    }
+
+    invariant(
+      input.tokenId !== undefined,
+      "MISSING_TOKEN_ID",
+      "ERC721 approval requires tokenId unless approveForAll is true"
+    );
+
+    const tokenId = BigNumber.from(input.tokenId);
+    const [approvedAddress, operatorApproved] = await Promise.all([
+      token.getApproved(tokenId),
+      token.isApprovedForAll(actorAddress, approvalTarget)
+    ]);
+    const alreadyApproved =
+      operatorApproved || ethers.utils.getAddress(approvedAddress) === approvalTarget;
+
+    if (!alreadyApproved) {
+      const approveTx = await this.prepareContractTransaction({
+        contract: token,
+        methodName: "approve",
+        args: [approvalTarget, tokenId],
+        from: actorAddress,
+        label: "approval"
+      });
+      transactions.push(approveTx);
+    }
+
+    return finalizePreparedAction(
+      {
+        version: 1,
+        kind: "approve-erc721",
+        network: input.network,
+        chainId: network.chainId,
+        actorAddress,
+        startingNonce,
+        poolAddress: approvalTarget,
+        quoteAddress: tokenAddress,
+        collateralAddress: tokenAddress,
+        createdAt: new Date().toISOString(),
+        expiresAt,
+        transactions,
+        metadata: {
+          tokenStandard: "erc721",
+          tokenAddress,
+          approvalTarget,
+          tokenId: tokenId.toString(),
+          approveForAll: false,
+          alreadyApproved
         }
       },
       this.runtime

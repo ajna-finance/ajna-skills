@@ -9,6 +9,8 @@ import type {
   ExecutePreparedResult,
   InspectPoolInput,
   InspectPositionInput,
+  PrepareApproveErc20Input,
+  PrepareApproveErc721Input,
   PrepareBorrowInput,
   PrepareLendInput
 } from "./types.js";
@@ -37,6 +39,20 @@ export async function runPrepareBorrow(input: PrepareBorrowInput) {
   invariant(runtime.mode !== "inspect", "MODE_BLOCKS_PREPARE", "Prepare requires AJNA_SKILLS_MODE=prepare or execute");
   const adapter = new AjnaAdapter(runtime);
   return adapter.prepareBorrow(input);
+}
+
+export async function runPrepareApproveErc20(input: PrepareApproveErc20Input) {
+  const runtime = loadRuntimeConfig();
+  invariant(runtime.mode !== "inspect", "MODE_BLOCKS_PREPARE", "Prepare requires AJNA_SKILLS_MODE=prepare or execute");
+  const adapter = new AjnaAdapter(runtime);
+  return adapter.prepareApproveErc20(input);
+}
+
+export async function runPrepareApproveErc721(input: PrepareApproveErc721Input) {
+  const runtime = loadRuntimeConfig();
+  invariant(runtime.mode !== "inspect", "MODE_BLOCKS_PREPARE", "Prepare requires AJNA_SKILLS_MODE=prepare or execute");
+  const adapter = new AjnaAdapter(runtime);
+  return adapter.prepareApproveErc721(input);
 }
 
 /*

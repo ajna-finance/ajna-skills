@@ -8,6 +8,8 @@ export type ActionKind =
   | "inspect-position"
   | "prepare-lend"
   | "prepare-borrow"
+  | "prepare-approve-erc20"
+  | "prepare-approve-erc721"
   | "execute-prepared";
 
 export interface PoolSelector {
@@ -42,6 +44,26 @@ export interface PrepareBorrowInput extends PoolSelector {
   maxAgeSeconds?: number;
 }
 
+export interface PrepareApproveErc20Input {
+  network: AjnaNetwork;
+  actorAddress: string;
+  tokenAddress: string;
+  poolAddress: string;
+  amount: string;
+  approvalMode?: "exact" | "max";
+  maxAgeSeconds?: number;
+}
+
+export interface PrepareApproveErc721Input {
+  network: AjnaNetwork;
+  actorAddress: string;
+  tokenAddress: string;
+  poolAddress: string;
+  tokenId?: string;
+  approveForAll?: boolean;
+  maxAgeSeconds?: number;
+}
+
 export interface ExecutePreparedInput {
   preparedAction: PreparedAction;
   confirmations?: number;
@@ -60,7 +82,7 @@ export interface PreparedTransaction {
 
 export interface PreparedAction {
   version: 1;
-  kind: "lend" | "borrow";
+  kind: "lend" | "borrow" | "approve-erc20" | "approve-erc721";
   network: AjnaNetwork;
   chainId: number;
   actorAddress: string;

@@ -1,6 +1,6 @@
 ---
 name: ajna-skills
-description: Inspect Ajna markets, prepare Ajna lend or borrow transactions, and execute approved prepared actions with a local signer.
+description: Inspect Ajna markets, prepare Ajna lend, borrow, and token approval transactions, and execute approved prepared actions with a local signer.
 ---
 
 # Ajna Skills
@@ -64,6 +64,26 @@ node dist/cli.js prepare-lend '{"network":"base","poolAddress":"0x...","actorAdd
 node dist/cli.js prepare-borrow '{"network":"base","poolAddress":"0x...","actorAddress":"0x...","amount":"1000000000000000000","collateralAmount":"2000000000000000000","limitIndex":1234,"approvalMode":"exact"}'
 ```
 
+### Prepare ERC20 approval
+
+```bash
+node dist/cli.js prepare-approve-erc20 '{"network":"base","poolAddress":"0x...","tokenAddress":"0x...","actorAddress":"0x...","amount":"1000000000000000000","approvalMode":"exact"}'
+```
+
+### Prepare ERC721 approval
+
+Single-token approval:
+
+```bash
+node dist/cli.js prepare-approve-erc721 '{"network":"base","poolAddress":"0x...","tokenAddress":"0x...","actorAddress":"0x...","tokenId":"123"}'
+```
+
+Or operator approval for all NFTs on that collection:
+
+```bash
+node dist/cli.js prepare-approve-erc721 '{"network":"base","poolAddress":"0x...","tokenAddress":"0x...","actorAddress":"0x...","approveForAll":true}'
+```
+
 ### Execute prepared payload
 
 ```bash
@@ -84,4 +104,5 @@ node dist/cli.js execute-prepared '{"preparedAction":{...}}'
 
 - v1 officially supports OpenClaw and Hermes only.
 - The skill stays inside the shared AgentSkills subset to keep behavior portable.
-- v1 currently targets ERC20 pools only.
+- Ajna lend and borrow actions in v1 still target ERC20 pools only.
+- v1 also supports preparing ERC20 and ERC721 approvals to a pool/operator target.
