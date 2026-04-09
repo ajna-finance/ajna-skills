@@ -1,0 +1,32 @@
+{
+  "name": "ajna-skills",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent-native Ajna protocol skill for OpenClaw, Hermes, and other AgentSkills-compatible runtimes.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "ajna-skills": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist coverage",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:chain": "vitest run tests/chain.test.ts"
+  },
+  "dependencies": {
+    "@ajna-finance/sdk": "^0.4.7",
+    "ethers": "^5.7.2",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}
