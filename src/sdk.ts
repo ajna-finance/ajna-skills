@@ -2,13 +2,19 @@ import {
   Config,
   ERC20Pool__factory,
   ERC20PoolFactory__factory,
+  ERC721Pool__factory,
   ERC20__factory,
   PoolInfoUtils__factory,
   createTransaction
 } from "@ajna-finance/sdk";
 import { BigNumber, ethers } from "ethers";
 
-import { DEFAULT_PREPARED_MAX_AGE_SECONDS, DEFAULT_TTL_SECONDS, ERC20_NON_SUBSET_HASH } from "./constants.js";
+import {
+  DEFAULT_PREPARED_MAX_AGE_SECONDS,
+  DEFAULT_TTL_SECONDS,
+  ERC20_NON_SUBSET_HASH,
+  UNSAFE_SDK_CALL_ACKNOWLEDGEMENT
+} from "./constants.js";
 import { AjnaSkillError, invariant } from "./errors.js";
 import { finalizePreparedAction } from "./prepared.js";
 import type {
@@ -21,6 +27,7 @@ import type {
   PrepareApproveErc721Input,
   PrepareBorrowInput,
   PrepareLendInput,
+  PrepareUnsupportedAjnaActionInput,
   RuntimeConfig,
   RuntimeNetworkConfig
 } from "./types.js";
@@ -426,6 +433,55 @@ export class AjnaAdapter {
     );
   }
 
+  async prepareUnsupportedAjnaAction(input: PrepareUnsupportedAjnaActionInput): Promise<PreparedAction> {
+    const network = this.network(input.network);
+    const provider = await this.provider(network);
+    const actorAddress = ethers.utils.getAddress(input.actorAddress);
+    const contractAddress = await this.resolveUnsupportedContractAddress(input, network, provider);
+    const startingNonce = await provider.getTransactionCount(actorAddress, "pending");
+    const expiresAt = new Date(
+      Date.now() + (input.maxAgeSeconds ?? DEFAULT_PREPARED_MAX_AGE_SECONDS) * 1000
+    ).toISOString();
+    const contract = new ethers.Contract(contractAddress, [input.abiFragment], provider);
+    const tx = await this.prepareContractTransaction({
+      contract,
+      methodName: input.methodName,
+      args: input.args,
+      from: actorAddress,
+      label: "action",
+      value: input.value
+    });
+
+    return finalizePreparedAction(
+      {
+        version: 1,
+        kind: "unsupported-ajna-action",
+        network: input.network,
+        chainId: network.chainId,
+        actorAddress,
+        startingNonce,
+        poolAddress: contractAddress,
+        quoteAddress: contractAddress,
+        collateralAddress: contractAddress,
+        createdAt: new Date().toISOString(),
+        expiresAt,
+        transactions: [tx],
+        metadata: {
+          unsafe: true,
+          contractKind: input.contractKind,
+          contractAddress,
+          abiFragment: input.abiFragment,
+          methodName: input.methodName,
+          argsCount: input.args.length,
+          value: BigNumber.from(input.value ?? 0).toString(),
+          acknowledgement: UNSAFE_SDK_CALL_ACKNOWLEDGEMENT,
+          notes: input.notes ?? null
+        }
+      },
+      this.runtime
+    );
+  }
+
   private network(network: RuntimeNetworkConfig["network"]): RuntimeNetworkConfig {
     const config = this.runtime.networks[network];
     invariant(
@@ -522,18 +578,27 @@ export class AjnaAdapter {
     methodName,
     args,
     from,
-    label
+    label,
+    value
   }: {
     contract: ethers.Contract;
     methodName: string;
     args: Array<unknown>;
     from: string;
     label: "approval" | "action";
+    value?: string;
   }) {
-    const wrapped = (await createTransaction(contract, {
-      methodName,
-      args
-    }, { from })) as TransactionLike;
+    const wrapped = (await createTransaction(
+      contract,
+      {
+        methodName,
+        args
+      },
+      {
+        from,
+        ...(value !== undefined ? { value } : {})
+      }
+    )) as TransactionLike;
 
     const tx = wrapped._transaction;
     invariant(tx, "SDK_TRANSACTION_PRIVATE_SHAPE", "Ajna SDK transaction did not expose populated transaction");
@@ -562,6 +627,70 @@ export class AjnaAdapter {
       gasEstimate: gasEstimate?.toString(),
       verificationError
     };
+  }
+
+  private async resolveUnsupportedContractAddress(
+    input: PrepareUnsupportedAjnaActionInput,
+    network: RuntimeNetworkConfig,
+    provider: ethers.providers.JsonRpcProvider
+  ): Promise<string> {
+    switch (input.contractKind) {
+      case "position-manager":
+        if (input.contractAddress) {
+          invariant(
+            ethers.utils.getAddress(input.contractAddress) === network.positionManager,
+            "UNSUPPORTED_CONTRACT_MISMATCH",
+            "Position manager address must match the built-in Ajna preset",
+            {
+              expected: network.positionManager,
+              received: input.contractAddress
+            }
+          );
+        }
+        return network.positionManager;
+      case "ajna-token":
+        if (input.contractAddress) {
+          invariant(
+            ethers.utils.getAddress(input.contractAddress) === network.ajnaToken,
+            "UNSUPPORTED_CONTRACT_MISMATCH",
+            "Ajna token address must match the built-in Ajna preset",
+            {
+              expected: network.ajnaToken,
+              received: input.contractAddress
+            }
+          );
+        }
+        return network.ajnaToken;
+      case "erc20-pool": {
+        const poolAddress = this.requireUnsupportedContractAddress(input);
+        const pool = ERC20Pool__factory.connect(poolAddress, provider);
+        await Promise.all([pool.quoteTokenAddress(), pool.collateralAddress()]);
+        return poolAddress;
+      }
+      case "erc721-pool": {
+        const poolAddress = this.requireUnsupportedContractAddress(input);
+        const pool = ERC721Pool__factory.connect(poolAddress, provider);
+        await Promise.all([pool.quoteTokenAddress(), pool.collateralAddress()]);
+        return poolAddress;
+      }
+      default:
+        return this.assertNeverUnsupportedContractKind(input.contractKind);
+    }
+  }
+
+  private requireUnsupportedContractAddress(input: PrepareUnsupportedAjnaActionInput): string {
+    invariant(
+      input.contractAddress,
+      "MISSING_CONTRACT_ADDRESS",
+      `${input.contractKind} requires contractAddress`
+    );
+    return ethers.utils.getAddress(input.contractAddress);
+  }
+
+  private assertNeverUnsupportedContractKind(kind: never): never {
+    throw new AjnaSkillError("UNSUPPORTED_CONTRACT_KIND", "Unsupported Ajna contract kind", {
+      contractKind: kind
+    });
   }
 }
 

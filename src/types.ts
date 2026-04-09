@@ -10,7 +10,14 @@ export type ActionKind =
   | "prepare-borrow"
   | "prepare-approve-erc20"
   | "prepare-approve-erc721"
+  | "prepare-unsupported-ajna-action"
   | "execute-prepared";
+
+export type UnsupportedAjnaContractKind =
+  | "erc20-pool"
+  | "erc721-pool"
+  | "position-manager"
+  | "ajna-token";
 
 export interface PoolSelector {
   network: AjnaNetwork;
@@ -64,6 +71,20 @@ export interface PrepareApproveErc721Input {
   maxAgeSeconds?: number;
 }
 
+export interface PrepareUnsupportedAjnaActionInput {
+  network: AjnaNetwork;
+  actorAddress: string;
+  contractKind: UnsupportedAjnaContractKind;
+  contractAddress?: string;
+  abiFragment: string;
+  methodName: string;
+  args: Array<unknown>;
+  value?: string;
+  maxAgeSeconds?: number;
+  acknowledgeRisk: string;
+  notes?: string;
+}
+
 export interface ExecutePreparedInput {
   preparedAction: PreparedAction;
   confirmations?: number;
@@ -82,7 +103,7 @@ export interface PreparedTransaction {
 
 export interface PreparedAction {
   version: 1;
-  kind: "lend" | "borrow" | "approve-erc20" | "approve-erc721";
+  kind: "lend" | "borrow" | "approve-erc20" | "approve-erc721" | "unsupported-ajna-action";
   network: AjnaNetwork;
   chainId: number;
   actorAddress: string;
@@ -113,6 +134,7 @@ export interface RuntimeConfig {
   mode: AjnaSkillMode;
   signerPrivateKey?: string;
   executeSignerAddress?: string;
+  unsafeUnsupportedActionsEnabled: boolean;
   networks: Partial<Record<AjnaNetwork, RuntimeNetworkConfig>>;
 }
 

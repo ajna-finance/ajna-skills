@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 
 import { loadRuntimeConfig } from "./config.js";
+import { UNSAFE_SDK_CALL_ACKNOWLEDGEMENT } from "./constants.js";
 import { AjnaSkillError, invariant } from "./errors.js";
 import { validatePreparedAction } from "./prepared.js";
 import { AjnaAdapter, assertProviderMatchesNetwork } from "./sdk.js";
@@ -12,7 +13,8 @@ import type {
   PrepareApproveErc20Input,
   PrepareApproveErc721Input,
   PrepareBorrowInput,
-  PrepareLendInput
+  PrepareLendInput,
+  PrepareUnsupportedAjnaActionInput
 } from "./types.js";
 
 export async function runInspectPool(input: InspectPoolInput) {
@@ -53,6 +55,26 @@ export async function runPrepareApproveErc721(input: PrepareApproveErc721Input) 
   invariant(runtime.mode !== "inspect", "MODE_BLOCKS_PREPARE", "Prepare requires AJNA_SKILLS_MODE=prepare or execute");
   const adapter = new AjnaAdapter(runtime);
   return adapter.prepareApproveErc721(input);
+}
+
+export async function runPrepareUnsupportedAjnaAction(input: PrepareUnsupportedAjnaActionInput) {
+  const runtime = loadRuntimeConfig();
+  invariant(runtime.mode !== "inspect", "MODE_BLOCKS_PREPARE", "Prepare requires AJNA_SKILLS_MODE=prepare or execute");
+  invariant(
+    runtime.unsafeUnsupportedActionsEnabled,
+    "UNSAFE_SDK_CALLS_DISABLED",
+    "prepare-unsupported-ajna-action requires AJNA_ENABLE_UNSAFE_SDK_CALLS=1"
+  );
+  invariant(
+    input.acknowledgeRisk === UNSAFE_SDK_CALL_ACKNOWLEDGEMENT,
+    "UNSAFE_ACKNOWLEDGEMENT_REQUIRED",
+    "Unsupported Ajna action prepare requires the exact acknowledgement phrase",
+    {
+      expected: UNSAFE_SDK_CALL_ACKNOWLEDGEMENT
+    }
+  );
+  const adapter = new AjnaAdapter(runtime);
+  return adapter.prepareUnsupportedAjnaAction(input);
 }
 
 /*

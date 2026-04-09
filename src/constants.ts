@@ -5,6 +5,8 @@ export const ERC20_NON_SUBSET_HASH =
 
 export const DEFAULT_TTL_SECONDS = 600;
 export const DEFAULT_PREPARED_MAX_AGE_SECONDS = 600;
+export const UNSAFE_SDK_CALL_ACKNOWLEDGEMENT =
+  "I understand this bypasses the stable skill surface";
 
 export const NETWORK_DEFAULTS: Record<AjnaNetwork, Omit<RuntimeNetworkConfig, "rpcUrl">> = {
   base: {
@@ -26,4 +28,3 @@ export const NETWORK_DEFAULTS: Record<AjnaNetwork, Omit<RuntimeNetworkConfig, "r
     positionManager: "0x87B0F458d8F1ACD28A83A748bFFbE24bD6B701B1"
   }
 };
-

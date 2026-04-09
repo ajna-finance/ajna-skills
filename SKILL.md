@@ -34,6 +34,12 @@ export AJNA_SKILLS_MODE="execute"
 export AJNA_SIGNER_PRIVATE_KEY="0x..."
 ```
 
+5. For the unsupported Ajna escape hatch, also set:
+
+```bash
+export AJNA_ENABLE_UNSAFE_SDK_CALLS="1"
+```
+
 ## Supported commands
 
 All commands accept one JSON payload argument and print one JSON result.
@@ -84,6 +90,12 @@ Or operator approval for all NFTs on that collection:
 node dist/cli.js prepare-approve-erc721 '{"network":"base","poolAddress":"0x...","tokenAddress":"0x...","actorAddress":"0x...","approveForAll":true}'
 ```
 
+### Prepare unsupported Ajna action
+
+```bash
+node dist/cli.js prepare-unsupported-ajna-action '{"network":"base","actorAddress":"0x...","contractKind":"position-manager","abiFragment":"function memorializePositions(address,uint256[])","methodName":"memorializePositions","args":["0x...",["1","2"]],"acknowledgeRisk":"I understand this bypasses the stable skill surface","notes":"operator requested unsupported Ajna action"}'
+```
+
 ### Execute prepared payload
 
 ```bash
@@ -99,6 +111,7 @@ node dist/cli.js execute-prepared '{"preparedAction":{...}}'
 - If the RPC endpoint resolves to the wrong chain, fail before any transaction send.
 - If the signer nonce changed since prepare time, re-prepare instead of retrying.
 - If you are missing RPC or signer config, fail clearly instead of guessing.
+- Unsupported Ajna actions must stay prepare-only and require both the env gate and the exact acknowledgement phrase.
 
 ## Notes
 
@@ -106,3 +119,4 @@ node dist/cli.js execute-prepared '{"preparedAction":{...}}'
 - The skill stays inside the shared AgentSkills subset to keep behavior portable.
 - Ajna lend and borrow actions in v1 still target ERC20 pools only.
 - v1 also supports preparing ERC20 and ERC721 approvals to a pool/operator target.
+- `prepare-unsupported-ajna-action` is the explicit advanced escape hatch for unsupported Ajna-native calls.

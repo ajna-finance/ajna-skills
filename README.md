@@ -27,6 +27,7 @@ Pre-v1. This repo is being built to match the approved design and eng review in
 - `prepare-borrow`
 - `prepare-approve-erc20`
 - `prepare-approve-erc721`
+- `prepare-unsupported-ajna-action`
 - `execute-prepared`
 
 Each command will accept a single JSON payload and print normalized JSON output.
@@ -49,6 +50,13 @@ Or use a generic fallback:
 
 ```bash
 export AJNA_RPC_URL="https://..."
+```
+
+Unsafe escape hatch is disabled by default. To allow unsupported Ajna contract
+calls to be prepared:
+
+```bash
+export AJNA_ENABLE_UNSAFE_SDK_CALLS=1
 ```
 
 ## Development
@@ -134,6 +142,7 @@ npx skills add <owner>/<repo>
 - execute requires a local signer and explicit policy mode
 - execute rejects RPC endpoints that resolve to the wrong chain
 - execute rejects prepared payloads once the signer nonce has moved, re-prepare instead
+- unsupported Ajna actions are prepare-only and require an explicit env gate plus acknowledgement phrase
 
 ## JSON command contract
 
@@ -239,6 +248,38 @@ Single-token approval:
 }
 ```
 
+### `prepare-unsupported-ajna-action`
+
+This is the advanced escape hatch for unsupported Ajna-native operations. It is
+disabled by default and only prepares the call. You still execute it through
+`execute-prepared` after review.
+
+Allowed `contractKind` values are:
+
+- `erc20-pool`
+- `erc721-pool`
+- `position-manager`
+- `ajna-token`
+
+Example:
+
+```json
+{
+  "network": "base",
+  "actorAddress": "0x...",
+  "contractKind": "position-manager",
+  "abiFragment": "function memorializePositions(address,uint256[])",
+  "methodName": "memorializePositions",
+  "args": ["0x...", ["1", "2"]],
+  "acknowledgeRisk": "I understand this bypasses the stable skill surface",
+  "notes": "operator requested unsupported Ajna action"
+}
+```
+
+For pool calls, include `contractAddress`. For `position-manager` and
+`ajna-token`, the skill uses the built-in Ajna address for the selected network
+and rejects mismatches.
+
 Operator approval for all owned NFTs:
 
 ```json
@@ -275,3 +316,17 @@ Prepared payloads are signed when the local signer matches `actorAddress`. Unsig
 prepared payloads are valid for dry runs, but execution rejects them. Executable
 payloads are also bound to the actor's pending nonce, so retries after any other
 signer activity require a fresh prepare step.
+
+## Unsupported Action Notes
+
+`prepare-unsupported-ajna-action` exists as an escape hatch, not the main product.
+It is intentionally ugly:
+
+- it must be enabled with `AJNA_ENABLE_UNSAFE_SDK_CALLS=1`
+- it requires the exact acknowledgement phrase `I understand this bypasses the stable skill surface`
+- it only prepares the call, never sends it directly
+- it is restricted to Ajna-related contract kinds, not arbitrary addresses by default
+
+The benefit of keeping it prepare-only is that the raw call still goes through
+the normal digest, signature, expiry, wrong-chain, and nonce-staleness checks
+before `execute-prepared` sends anything.

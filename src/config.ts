@@ -15,6 +15,7 @@ export function loadRuntimeConfig(): RuntimeConfig {
     mode,
     signerPrivateKey,
     executeSignerAddress,
+    unsafeUnsupportedActionsEnabled: loadBooleanEnv("AJNA_ENABLE_UNSAFE_SDK_CALLS"),
     networks: {
       ...(buildNetworkConfig("base") ? { base: buildNetworkConfig("base") } : {}),
       ...(buildNetworkConfig("ethereum") ? { ethereum: buildNetworkConfig("ethereum") } : {})
@@ -57,4 +58,9 @@ function buildNetworkConfig(network: AjnaNetwork): RuntimeNetworkConfig | undefi
     positionManager:
       process.env[`AJNA_POSITION_MANAGER_${suffix}`] ?? preset.positionManager
   };
+}
+
+function loadBooleanEnv(name: string): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
 }

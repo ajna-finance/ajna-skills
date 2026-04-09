@@ -11,6 +11,7 @@ describe("prepared action integrity", () => {
       mode: "execute",
       signerPrivateKey: wallet.privateKey,
       executeSignerAddress: wallet.address,
+      unsafeUnsupportedActionsEnabled: false,
       networks: {
         base: {
           network: "base",
@@ -74,6 +75,7 @@ describe("prepared action integrity", () => {
       mode: "execute",
       signerPrivateKey: wallet.privateKey,
       executeSignerAddress: wallet.address,
+      unsafeUnsupportedActionsEnabled: false,
       networks: {
         base: {
           network: "base",

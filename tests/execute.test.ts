@@ -49,6 +49,7 @@ describe("runExecutePrepared", () => {
         mode: "execute",
         signerPrivateKey: wallet.privateKey,
         executeSignerAddress: wallet.address,
+        unsafeUnsupportedActionsEnabled: false,
         networks: {}
       }
     );
@@ -100,6 +101,7 @@ describe("runExecutePrepared", () => {
         mode: "execute",
         signerPrivateKey: wallet.privateKey,
         executeSignerAddress: wallet.address,
+        unsafeUnsupportedActionsEnabled: false,
         networks: {}
       }
     );
@@ -167,6 +169,7 @@ describe("runExecutePrepared", () => {
         mode: "execute",
         signerPrivateKey: wallet.privateKey,
         executeSignerAddress: wallet.address,
+        unsafeUnsupportedActionsEnabled: false,
         networks: {}
       }
     );

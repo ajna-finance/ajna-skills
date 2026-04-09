@@ -9,7 +9,8 @@ import {
   runPrepareApproveErc20,
   runPrepareApproveErc721,
   runPrepareBorrow,
-  runPrepareLend
+  runPrepareLend,
+  runPrepareUnsupportedAjnaAction
 } from "./actions.js";
 import type {
   ExecutePreparedInput,
@@ -19,6 +20,7 @@ import type {
   PrepareApproveErc721Input,
   PrepareBorrowInput,
   PrepareLendInput,
+  PrepareUnsupportedAjnaActionInput,
   SuccessEnvelope
 } from "./types.js";
 
@@ -39,11 +41,15 @@ async function main() {
       return printSuccess(await runPrepareApproveErc20(parseJsonArgument<PrepareApproveErc20Input>(payload)));
     case "prepare-approve-erc721":
       return printSuccess(await runPrepareApproveErc721(parseJsonArgument<PrepareApproveErc721Input>(payload)));
+    case "prepare-unsupported-ajna-action":
+      return printSuccess(
+        await runPrepareUnsupportedAjnaAction(parseJsonArgument<PrepareUnsupportedAjnaActionInput>(payload))
+      );
     case "execute-prepared":
       return printSuccess(await runExecutePrepared(parseJsonArgument<ExecutePreparedInput>(payload)));
     default:
       throw new Error(
-        "Unknown action. Expected one of inspect-pool, inspect-position, prepare-lend, prepare-borrow, prepare-approve-erc20, prepare-approve-erc721, execute-prepared"
+        "Unknown action. Expected one of inspect-pool, inspect-position, prepare-lend, prepare-borrow, prepare-approve-erc20, prepare-approve-erc721, prepare-unsupported-ajna-action, execute-prepared"
       );
   }
 }
