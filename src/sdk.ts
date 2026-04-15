@@ -77,13 +77,46 @@ const UNSAFE_CONTRACT_ABIS: Record<UnsupportedAjnaContractKind, UnsafeContractAb
   "ajna-token": AjnaToken__factory.abi
 };
 const UNSAFE_ALLOWED_METHODS: Record<UnsupportedAjnaContractKind, Set<string>> = {
-  "erc20-pool": buildUnsafeStateMutatingMethodAllowlist(ERC20Pool__factory.abi, [
-    "initialize(uint256)",
-    "multicall(bytes[])"
+  "erc20-pool": new Set([
+    "addCollateral(uint256,uint256,uint256)",
+    "addQuoteToken(uint256,uint256,uint256)",
+    "bucketTake(address,bool,uint256)",
+    "drawDebt(address,uint256,uint256,uint256)",
+    "flashLoan(address,address,uint256,bytes)",
+    "kick(address,uint256)",
+    "kickReserveAuction()",
+    "lenderKick(uint256,uint256)",
+    "moveQuoteToken(uint256,uint256,uint256,uint256)",
+    "removeCollateral(uint256,uint256)",
+    "removeQuoteToken(uint256,uint256)",
+    "repayDebt(address,uint256,uint256,address,uint256)",
+    "settle(address,uint256)",
+    "stampLoan()",
+    "take(address,uint256,address,bytes)",
+    "takeReserves(uint256)",
+    "updateInterest()",
+    "withdrawBonds(address,uint256)"
   ]),
-  "erc721-pool": buildUnsafeStateMutatingMethodAllowlist(ERC721Pool__factory.abi, [
-    "initialize(uint256[],uint256)",
-    "multicall(bytes[])"
+  "erc721-pool": new Set([
+    "addCollateral(uint256[],uint256,uint256)",
+    "addQuoteToken(uint256,uint256,uint256)",
+    "bucketTake(address,bool,uint256)",
+    "drawDebt(address,uint256,uint256,uint256[])",
+    "flashLoan(address,address,uint256,bytes)",
+    "kick(address,uint256)",
+    "kickReserveAuction()",
+    "lenderKick(uint256,uint256)",
+    "mergeOrRemoveCollateral(uint256[],uint256,uint256)",
+    "moveQuoteToken(uint256,uint256,uint256,uint256)",
+    "removeCollateral(uint256,uint256)",
+    "removeQuoteToken(uint256,uint256)",
+    "repayDebt(address,uint256,uint256,address,uint256)",
+    "settle(address,uint256)",
+    "stampLoan()",
+    "take(address,uint256,address,bytes)",
+    "takeReserves(uint256)",
+    "updateInterest()",
+    "withdrawBonds(address,uint256)"
   ]),
   "position-manager": new Set([
     "burn(address,uint256)",
@@ -97,21 +130,8 @@ const UNSAFE_ALLOWED_METHODS: Record<UnsupportedAjnaContractKind, Set<string>> =
     "delegateBySig(address,uint256,uint256,uint8,bytes32,bytes32)"
   ])
 };
-
-function buildUnsafeStateMutatingMethodAllowlist(
-  abi: UnsafeContractAbi,
-  disallowedSignatures: string[]
-): Set<string> {
-  const iface = new ethers.utils.Interface(abi);
-  const blocked = new Set(disallowedSignatures);
-
-  return new Set(
-    Object.values(iface.functions)
-      .filter((fragment) => fragment.stateMutability !== "view" && fragment.stateMutability !== "pure")
-      .map((fragment) => fragment.format(ethers.utils.FormatTypes.sighash))
-      .filter((signature) => !blocked.has(signature))
-  );
-}
+const ERC20_SYMBOL_STRING_IFACE = new ethers.utils.Interface(["function symbol() view returns (string)"]);
+const ERC20_SYMBOL_BYTES32_IFACE = new ethers.utils.Interface(["function symbol() view returns (bytes32)"]);
 
 export class AjnaAdapter {
   constructor(private readonly runtime: RuntimeConfig) {}
@@ -797,6 +817,7 @@ export class AjnaAdapter {
     const actorAddress = ethers.utils.getAddress(input.actorAddress);
     const contractAddress = await this.resolveUnsupportedContractAddress(input, network, provider);
     const resolvedMethod = this.resolveUnsupportedMethod(input);
+    this.assertUnsafeArgsEncodable(resolvedMethod.abi, resolvedMethod.methodName, input.args, input.contractKind);
     const startingNonce = await provider.getTransactionCount(actorAddress, "pending");
     const expiresAt = await this.expirationIso(provider, input.maxAgeSeconds);
     const contract = new ethers.Contract(contractAddress, resolvedMethod.abi, provider);
@@ -899,9 +920,28 @@ export class AjnaAdapter {
     provider: ethers.providers.Provider
   ): Promise<string | null> {
     try {
-      return this.sanitizeSymbol(await ERC20__factory.connect(tokenAddress, provider).symbol());
+      const callResult = await provider.call({
+        to: tokenAddress,
+        data: ERC20_SYMBOL_STRING_IFACE.encodeFunctionData("symbol")
+      });
+
+      try {
+        const [symbol] = ERC20_SYMBOL_STRING_IFACE.decodeFunctionResult("symbol", callResult);
+        return this.sanitizeSymbol(symbol);
+      } catch {
+        const [bytes32Symbol] = ERC20_SYMBOL_BYTES32_IFACE.decodeFunctionResult("symbol", callResult);
+        return this.sanitizeSymbol(this.parseBytes32Symbol(bytes32Symbol));
+      }
     } catch {
       return null;
+    }
+  }
+
+  private parseBytes32Symbol(value: string): string {
+    try {
+      return ethers.utils.parseBytes32String(value);
+    } catch {
+      return value.replace(/\x00+$/g, "").trim();
     }
   }
 
@@ -1435,6 +1475,29 @@ export class AjnaAdapter {
         methodSignature
       }
     );
+  }
+
+  private assertUnsafeArgsEncodable(
+    abi: UnsafeContractAbi,
+    methodSignature: string,
+    args: Array<unknown>,
+    contractKind: UnsupportedAjnaContractKind
+  ): void {
+    const iface = new ethers.utils.Interface(abi);
+
+    try {
+      iface.encodeFunctionData(methodSignature, args);
+    } catch (error) {
+      throw new AjnaSkillError(
+        "UNSAFE_ARGUMENTS_INVALID",
+        "Unsupported Ajna action arguments do not match the selected method ABI",
+        {
+          contractKind,
+          methodSignature,
+          reason: error instanceof Error ? error.message : String(error)
+        }
+      );
+    }
   }
 
   private normalizeSubsetTokenIds(tokenIds: string[] | undefined): string[] {

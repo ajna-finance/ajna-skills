@@ -114,4 +114,57 @@ describe("prepare-unsupported-ajna-action", () => {
       code: "UNSAFE_METHOD_DISALLOWED"
     });
   });
+
+  it("rejects LP transfer methods on pool escape hatches", () => {
+    const adapter = new AjnaAdapter({
+      mode: "prepare",
+      unsafeUnsupportedActionsEnabled: true,
+      networks: {}
+    });
+
+    try {
+      (adapter as never).resolveUnsupportedMethod({
+        network: "base",
+        actorAddress: "0x0000000000000000000000000000000000000001",
+        contractKind: "erc20-pool",
+        contractAddress: "0x0000000000000000000000000000000000000002",
+        methodName: "transferLP",
+        args: [
+          "0x0000000000000000000000000000000000000001",
+          "0x0000000000000000000000000000000000000002",
+          []
+        ],
+        acknowledgeRisk: UNSAFE_SDK_CALL_ACKNOWLEDGEMENT
+      });
+      throw new Error("expected resolveUnsupportedMethod to throw");
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "UNSAFE_METHOD_DISALLOWED"
+      });
+    }
+  });
+
+  it("rejects unsupported actions whose args do not match the selected ABI", async () => {
+    process.env.AJNA_SKILLS_MODE = "prepare";
+    process.env.AJNA_ENABLE_UNSAFE_SDK_CALLS = "1";
+    process.env.AJNA_RPC_URL_BASE = "http://127.0.0.1:8545";
+
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getNetwork").mockResolvedValue({
+      chainId: 8453,
+      name: "base"
+    });
+
+    await expect(
+      runPrepareUnsupportedAjnaAction({
+        network: "base",
+        actorAddress: "0x0000000000000000000000000000000000000001",
+        contractKind: "position-manager",
+        methodName: "memorializePositions",
+        args: ["0x0000000000000000000000000000000000000001", "1"],
+        acknowledgeRisk: UNSAFE_SDK_CALL_ACKNOWLEDGEMENT
+      })
+    ).rejects.toMatchObject({
+      code: "UNSAFE_ARGUMENTS_INVALID"
+    });
+  });
 });

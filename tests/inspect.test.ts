@@ -251,4 +251,19 @@ describe("AjnaAdapter inspect helpers", () => {
       }
     });
   });
+
+  it("falls back to bytes32 token symbols when string decoding is not available", async () => {
+    const adapter = new AjnaAdapter(runtime);
+    const provider = {
+      call: vi
+        .fn()
+        .mockResolvedValue(
+          ethers.utils.defaultAbiCoder.encode(["bytes32"], [ethers.utils.formatBytes32String("MKR")])
+        )
+    };
+
+    await expect(
+      (adapter as never).readSymbol("0x0000000000000000000000000000000000000999", provider as never)
+    ).resolves.toBe("MKR");
+  });
 });

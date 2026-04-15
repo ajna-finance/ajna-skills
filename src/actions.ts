@@ -189,6 +189,15 @@ export async function runExecutePrepared(
     });
     const receipt = await response.wait(confirmations);
     invariant(
+      receipt.status !== undefined,
+      "EXECUTE_RECEIPT_STATUS_UNKNOWN",
+      "Prepared transaction receipt did not include a success status; verify onchain state manually",
+      {
+        label: tx.label,
+        hash: response.hash
+      }
+    );
+    invariant(
       receipt.status === 1,
       "EXECUTE_TRANSACTION_REVERTED",
       "Prepared transaction reverted after it was submitted",

@@ -218,4 +218,29 @@ describe("runExecutePrepared", () => {
       code: "EXECUTE_TRANSACTION_REVERTED"
     });
   });
+
+  it("fails distinctly when a transaction receipt omits status", async () => {
+    const wallet = ethers.Wallet.createRandom();
+
+    process.env.AJNA_SKILLS_MODE = "execute";
+    process.env.AJNA_SIGNER_PRIVATE_KEY = wallet.privateKey;
+    process.env.AJNA_RPC_URL_BASE = "http://127.0.0.1:8545";
+
+    const preparedAction = await buildPreparedFixture(wallet, { startingNonce: 7 });
+
+    mockBaseProvider({ nonce: 7 });
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "estimateGas").mockResolvedValue(
+      BigNumber.from(21_000)
+    );
+    vi.spyOn(ethers.Wallet.prototype, "sendTransaction").mockResolvedValue({
+      hash: `0x${"3".padStart(64, "0")}`,
+      wait: async () => ({
+        gasUsed: BigNumber.from(21_000)
+      })
+    } as never);
+
+    await expect(runExecutePrepared({ preparedAction })).rejects.toMatchObject({
+      code: "EXECUTE_RECEIPT_STATUS_UNKNOWN"
+    });
+  });
 });
