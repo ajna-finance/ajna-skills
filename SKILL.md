@@ -145,17 +145,26 @@ Prepare lend:
 node dist/cli.js prepare-lend '{"network":"base","poolAddress":"0x...","actorAddress":"0x...","amount":"1000000000000000000","bucketIndex":1234,"approvalMode":"exact"}'
 ```
 
+`amount` is an Ajna WAD-sized action amount. Exact approvals are converted to
+raw token units from the pool token scale.
+
 Prepare borrow:
 
 ```bash
 node dist/cli.js prepare-borrow '{"network":"base","poolAddress":"0x...","actorAddress":"0x...","amount":"1000000000000000000","collateralAmount":"2000000000000000000","limitIndex":1234,"approvalMode":"exact"}'
 ```
 
+`amount` and `collateralAmount` are Ajna WAD-sized action amounts.
+
 Prepare ERC20 approval:
 
 ```bash
 node dist/cli.js prepare-approve-erc20 '{"network":"base","poolAddress":"0x...","tokenAddress":"0x...","actorAddress":"0x...","amount":"1000000000000000000","approvalMode":"exact"}'
 ```
+
+`poolAddress` must be a real Ajna pool on the selected network.
+If the requested allowance is already satisfied, prepare fails instead of
+returning an empty payload.
 
 Prepare ERC721 approval:
 
@@ -168,6 +177,10 @@ Or operator approval for all NFTs on that collection:
 ```bash
 node dist/cli.js prepare-approve-erc721 '{"network":"base","poolAddress":"0x...","tokenAddress":"0x...","actorAddress":"0x...","approveForAll":true}'
 ```
+
+`poolAddress` must be a real Ajna pool on the selected network.
+If the requested approval is already satisfied, prepare fails instead of
+returning an empty payload.
 
 Execute a reviewed payload:
 
@@ -186,6 +199,8 @@ node dist/cli.js prepare-unsupported-ajna-action '{"network":"base","actorAddres
 Use this only when there is no first-class command for the requested Ajna
 action. It still stays on the same `prepare -> review -> execute` path. It is
 not a direct-execute shortcut.
+Pass large integers as quoted strings when they may exceed JavaScript's safe
+integer range.
 
 ## Pitfalls
 
@@ -219,6 +234,8 @@ not a direct-execute shortcut.
 
 - Never execute directly from a fresh user prompt.
 - Always inspect, then prepare, then review, then execute, then verify.
+- Execution preflights the whole prepared sequence before sending the first
+  transaction.
 - `execute-prepared` only works in `AJNA_SKILLS_MODE=execute`.
 - If a prepared payload is unsigned, stale, mutated, or nonce-invalid,
   execution should fail.

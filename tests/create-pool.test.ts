@@ -1,4 +1,4 @@
-import { ERC20PoolFactory__factory, ERC721PoolFactory__factory } from "@ajna-finance/sdk";
+import { ERC20__factory, ERC20PoolFactory__factory, ERC721PoolFactory__factory } from "@ajna-finance/sdk";
 import { BigNumber, ethers } from "ethers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -52,8 +52,15 @@ describe("pool creation flows", () => {
       chainId: 8453,
       name: "base"
     });
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getBlock").mockResolvedValue({
+      timestamp: 1_700_000_000
+    } as never);
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getCode").mockResolvedValue("0x1234");
     vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getTransactionCount").mockResolvedValue(7);
     vi.spyOn(ERC20PoolFactory__factory, "connect").mockReturnValue(factory as never);
+    vi.spyOn(ERC20__factory, "connect").mockReturnValue({
+      decimals: vi.fn().mockResolvedValue(18)
+    } as never);
 
     const adapter = new AjnaAdapter(runtime);
     const txSpy = vi
@@ -106,8 +113,15 @@ describe("pool creation flows", () => {
       chainId: 8453,
       name: "base"
     });
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getBlock").mockResolvedValue({
+      timestamp: 1_700_000_000
+    } as never);
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getCode").mockResolvedValue("0x1234");
     vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getTransactionCount").mockResolvedValue(11);
     vi.spyOn(ERC721PoolFactory__factory, "connect").mockReturnValue(factory as never);
+    vi.spyOn(ERC20__factory, "connect").mockReturnValue({
+      decimals: vi.fn().mockResolvedValue(6)
+    } as never);
 
     const adapter = new AjnaAdapter(runtime);
     const txSpy = vi
@@ -206,5 +220,27 @@ describe("pool creation flows", () => {
 
     expect(result.resolvedPoolAddress).toBe(resolvedPoolAddress);
     expect(result.submitted).toHaveLength(1);
+  });
+
+  it("rejects ERC20 pool creation when the token addresses are not deployed contracts", async () => {
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getNetwork").mockResolvedValue({
+      chainId: 8453,
+      name: "base"
+    });
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getCode").mockResolvedValue("0x");
+
+    const adapter = new AjnaAdapter(runtime);
+
+    await expect(
+      adapter.prepareCreateErc20Pool({
+        network: "base",
+        actorAddress: "0x00000000000000000000000000000000000000A3",
+        collateralAddress: "0x00000000000000000000000000000000000000B3",
+        quoteAddress: "0x00000000000000000000000000000000000000C3",
+        interestRate: "50000000000000000"
+      })
+    ).rejects.toMatchObject({
+      code: "INVALID_POOL_TOKENS"
+    });
   });
 });

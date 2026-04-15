@@ -143,6 +143,7 @@ npx skills add <owner>/<repo>
 - inspect is always read-only
 - prepare never sends a transaction
 - execute only accepts a previously prepared payload
+- execute preflights the whole prepared sequence before sending the first transaction
 - execute requires a local signer and explicit policy mode
 - execute rejects RPC endpoints that resolve to the wrong chain
 - execute rejects prepared payloads once the signer nonce has moved, re-prepare instead
@@ -245,6 +246,10 @@ Lender bucket position:
 }
 ```
 
+`amount` is an Ajna WAD-sized action amount. For `"approvalMode":"exact"`, the
+skill derives the ERC20 approval amount from the pool token scale instead of
+reusing the WAD value directly.
+
 ### `prepare-create-erc20-pool`
 
 ```json
@@ -309,6 +314,10 @@ them for Ajna pool lookup.
 }
 ```
 
+`amount` and `collateralAmount` are Ajna WAD-sized action amounts. For
+`"approvalMode":"exact"`, the collateral approval is converted to raw token
+units using the pool collateral scale.
+
 ### `prepare-approve-erc20`
 
 ```json
@@ -322,6 +331,11 @@ them for Ajna pool lookup.
   "maxAgeSeconds": 600
 }
 ```
+
+`poolAddress` must be a real Ajna pool on the selected network. This command no
+longer allows arbitrary spender approvals through a fake or unrelated target.
+If the existing allowance already matches the requested state, prepare now fails
+instead of returning an empty no-op payload.
 
 ### `prepare-approve-erc721`
 
@@ -337,6 +351,10 @@ Single-token approval:
   "maxAgeSeconds": 600
 }
 ```
+
+`poolAddress` must be a real Ajna pool on the selected network.
+If the NFT approval already matches the requested state, prepare now fails
+instead of returning an empty no-op payload.
 
 ### `prepare-unsupported-ajna-action`
 
@@ -364,6 +382,9 @@ Example:
   "notes": "operator requested unsupported Ajna action"
 }
 ```
+
+Pass large integer args such as `uint256`, token IDs, or bucket indexes as
+quoted strings when they may exceed JavaScript's safe integer range.
 
 For pool calls, include `contractAddress`. For `position-manager` and
 `ajna-token`, the skill uses the built-in Ajna address for the selected network

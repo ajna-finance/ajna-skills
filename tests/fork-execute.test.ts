@@ -170,6 +170,7 @@ describe("fork-backed execute flow", () => {
       });
 
       expect(preparedAction.transactions.length).toBeGreaterThan(0);
+      expect(preparedAction.metadata.approvalAmount).toBe(fundAmountRaw);
 
       const result = await runExecutePrepared({
         preparedAction,

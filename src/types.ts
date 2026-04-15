@@ -127,7 +127,6 @@ export interface PreparedTransaction {
   from?: string;
   nonce?: number;
   gasEstimate?: string;
-  verificationError?: string;
 }
 
 export interface PreparedAction {

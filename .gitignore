@@ -1,6 +1,8 @@
 dist/
 node_modules/
 coverage/
+tests/*.js
+tests/*.d.ts
 .env
 .env.local
 .DS_Store

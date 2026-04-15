@@ -1,4 +1,4 @@
-import { ERC20Pool__factory, PoolInfoUtils__factory } from "@ajna-finance/sdk";
+import { ERC20Pool__factory, ERC20PoolFactory__factory, PoolInfoUtils__factory } from "@ajna-finance/sdk";
 import { BigNumber, ethers } from "ethers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -92,6 +92,9 @@ describe("AjnaAdapter inspect helpers", () => {
       name: "base"
     });
     vi.spyOn(ERC20Pool__factory, "connect").mockReturnValue(pool as never);
+    vi.spyOn(ERC20PoolFactory__factory, "connect").mockReturnValue({
+      deployedPools: vi.fn().mockResolvedValue(poolAddress)
+    } as never);
     vi.spyOn(PoolInfoUtils__factory, "connect").mockReturnValue(poolInfoUtils as never);
 
     const adapter = new AjnaAdapter(runtime);
@@ -177,6 +180,9 @@ describe("AjnaAdapter inspect helpers", () => {
       name: "base"
     });
     vi.spyOn(ERC20Pool__factory, "connect").mockReturnValue(pool as never);
+    vi.spyOn(ERC20PoolFactory__factory, "connect").mockReturnValue({
+      deployedPools: vi.fn().mockResolvedValue(poolAddress)
+    } as never);
     vi.spyOn(PoolInfoUtils__factory, "connect").mockReturnValue(poolInfoUtils as never);
 
     const adapter = new AjnaAdapter(runtime);
@@ -217,6 +223,10 @@ describe("AjnaAdapter inspect helpers", () => {
   it("returns a normalized bucket inspection result", async () => {
     const poolAddress = "0x0000000000000000000000000000000000000300";
     const pool = {
+      quoteTokenAddress: vi.fn().mockResolvedValue("0x0000000000000000000000000000000000000301"),
+      collateralAddress: vi.fn().mockResolvedValue("0x0000000000000000000000000000000000000302"),
+      quoteTokenScale: vi.fn().mockResolvedValue(BigNumber.from(1_000_000)),
+      collateralScale: vi.fn().mockResolvedValue(BigNumber.from("1000000000000000000")),
       bucketCollateralDust: vi.fn().mockResolvedValue(BigNumber.from(40))
     };
     const poolInfoUtils = {
@@ -237,6 +247,9 @@ describe("AjnaAdapter inspect helpers", () => {
       name: "base"
     });
     vi.spyOn(ERC20Pool__factory, "connect").mockReturnValue(pool as never);
+    vi.spyOn(ERC20PoolFactory__factory, "connect").mockReturnValue({
+      deployedPools: vi.fn().mockResolvedValue(poolAddress)
+    } as never);
     vi.spyOn(PoolInfoUtils__factory, "connect").mockReturnValue(poolInfoUtils as never);
 
     const adapter = new AjnaAdapter(runtime);

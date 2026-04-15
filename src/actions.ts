@@ -150,6 +150,7 @@ export async function runExecutePrepared(
 
   const confirmations = input.confirmations ?? 1;
   const submitted: ExecutePreparedResult["submitted"] = [];
+  const preparedTransactions = [];
 
   for (const [index, tx] of input.preparedAction.transactions.entries()) {
     const expectedNonce = input.preparedAction.startingNonce + index;
@@ -183,14 +184,22 @@ export async function runExecutePrepared(
       });
     }
 
+    preparedTransactions.push({
+      tx,
+      estimateInput,
+      gasEstimate
+    });
+  }
+
+  for (const prepared of preparedTransactions) {
     const response = await signer.sendTransaction({
-      ...estimateInput,
-      gasLimit: gasEstimate.mul(3)
+      ...prepared.estimateInput,
+      gasLimit: prepared.gasEstimate.mul(3)
     });
     const receipt = await response.wait(confirmations);
 
     submitted.push({
-      label: tx.label,
+      label: prepared.tx.label,
       hash: response.hash,
       status: receipt.status ?? 0,
       gasUsed: receipt.gasUsed.toString()

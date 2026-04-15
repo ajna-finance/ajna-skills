@@ -201,4 +201,78 @@ describe("runExecutePrepared", () => {
     expect(result.submitted).toHaveLength(3);
     expect(result.submitted.map((entry) => entry.label)).toEqual(["approval", "approval", "action"]);
   });
+
+  it("preflights all transactions before sending the first one", async () => {
+    const wallet = ethers.Wallet.createRandom();
+
+    process.env.AJNA_SKILLS_MODE = "execute";
+    process.env.AJNA_SIGNER_PRIVATE_KEY = wallet.privateKey;
+    process.env.AJNA_RPC_URL_BASE = "http://127.0.0.1:8545";
+
+    const preparedAction = await finalizePreparedAction(
+      {
+        version: 1,
+        kind: "borrow",
+        network: "base",
+        chainId: 8453,
+        actorAddress: wallet.address,
+        startingNonce: 2,
+        poolAddress: "0x0000000000000000000000000000000000000100",
+        quoteAddress: "0x0000000000000000000000000000000000000101",
+        collateralAddress: "0x0000000000000000000000000000000000000102",
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        transactions: [
+          {
+            label: "approval",
+            target: "0x0000000000000000000000000000000000000101",
+            value: "0",
+            data: "0xaaaa",
+            from: wallet.address
+          },
+          {
+            label: "action",
+            target: "0x0000000000000000000000000000000000000100",
+            value: "0",
+            data: "0xbbbb",
+            from: wallet.address
+          }
+        ],
+        metadata: {
+          amount: "100"
+        }
+      },
+      {
+        mode: "execute",
+        signerPrivateKey: wallet.privateKey,
+        executeSignerAddress: wallet.address,
+        unsafeUnsupportedActionsEnabled: false,
+        networks: {}
+      }
+    );
+
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getNetwork").mockResolvedValue({
+      chainId: 8453,
+      name: "base"
+    });
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getTransactionCount").mockResolvedValue(2);
+    const estimateGasSpy = vi
+      .spyOn(ethers.providers.JsonRpcProvider.prototype, "estimateGas")
+      .mockResolvedValueOnce(BigNumber.from(21_000))
+      .mockRejectedValueOnce(new Error("second tx fails"));
+    const sendSpy = vi.spyOn(ethers.Wallet.prototype, "sendTransaction").mockResolvedValue({
+      hash: `0x${"1".padStart(64, "0")}`,
+      wait: async () => ({
+        status: 1,
+        gasUsed: BigNumber.from(21_000)
+      })
+    } as never);
+
+    await expect(runExecutePrepared({ preparedAction })).rejects.toMatchObject({
+      code: "EXECUTE_VERIFICATION_FAILED"
+    });
+
+    expect(estimateGasSpy).toHaveBeenCalledTimes(2);
+    expect(sendSpy).not.toHaveBeenCalled();
+  });
 });

@@ -57,6 +57,9 @@ describe("prepare-unsupported-ajna-action", () => {
       chainId: 8453,
       name: "base"
     });
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getBlock").mockResolvedValue({
+      timestamp: 1_700_000_000
+    } as never);
     vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getTransactionCount").mockResolvedValue(2);
 
     const txSpy = vi.spyOn(AjnaAdapter.prototype as never, "prepareContractTransaction").mockResolvedValue({

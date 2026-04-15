@@ -42,6 +42,11 @@ export function validatePreparedAction(
 ): void {
   invariant(preparedAction.version === 1, "INVALID_PREPARED_VERSION", "Unsupported prepared action version");
   invariant(
+    preparedAction.transactions.length > 0,
+    "EMPTY_PREPARED_ACTION",
+    "Prepared action must contain at least one transaction"
+  );
+  invariant(
     Number.isInteger(preparedAction.startingNonce) && preparedAction.startingNonce >= 0,
     "INVALID_PREPARED_NONCE",
     "Prepared action starting nonce must be a non-negative integer",

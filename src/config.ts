@@ -10,11 +10,14 @@ export function loadRuntimeConfig(): RuntimeConfig {
   const executeSignerAddress = signerPrivateKey
     ? new ethers.Wallet(signerPrivateKey).address
     : undefined;
+  const prepareSignerAddress = signerPrivateKey && mode !== "inspect"
+    ? new ethers.Wallet(signerPrivateKey).address
+    : undefined;
 
   return {
     mode,
     signerPrivateKey,
-    executeSignerAddress,
+    executeSignerAddress: mode === "execute" ? executeSignerAddress : prepareSignerAddress,
     unsafeUnsupportedActionsEnabled: loadBooleanEnv("AJNA_ENABLE_UNSAFE_SDK_CALLS"),
     networks: {
       ...(buildNetworkConfig("base") ? { base: buildNetworkConfig("base") } : {}),
