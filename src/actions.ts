@@ -202,12 +202,39 @@ export async function runExecutePrepared(
         ...estimateInput,
         gasLimit: computeExecutionGasLimit(gasEstimate, blockGasLimit)
       });
-      const receipt = await response.wait(confirmations);
-      const submittedEntry = {
+      const baseSubmittedEntry = {
         label: tx.label,
         hash: response.hash,
-        status: receipt.status ?? null,
-        gasUsed: receipt.gasUsed.toString()
+        status: null,
+        gasUsed: null
+      };
+      let receipt: ethers.providers.TransactionReceipt;
+      let confirmedHash = response.hash;
+      let receiptStatus: number | null;
+      let receiptGasUsed: string;
+
+      try {
+        receipt = await response.wait(confirmations);
+        receiptStatus = receipt.status ?? null;
+        receiptGasUsed = receipt.gasUsed.toString();
+      } catch (error) {
+        const replacementReceipt = replacementSuccessReceipt(error, estimateInput);
+
+        if (replacementReceipt) {
+          receipt = replacementReceipt.receipt;
+          confirmedHash = replacementReceipt.hash;
+          receiptStatus = replacementReceipt.receipt.status ?? null;
+          receiptGasUsed = replacementReceipt.receipt.gasUsed.toString();
+        } else {
+          throw waitFailureAsSkillError(error, tx.label, response.hash, submitted, baseSubmittedEntry);
+        }
+      }
+
+      const receiptEntry = {
+        label: tx.label,
+        hash: confirmedHash,
+        status: receiptStatus,
+        gasUsed: receiptGasUsed
       };
 
       invariant(
@@ -216,8 +243,8 @@ export async function runExecutePrepared(
         "Prepared transaction receipt did not include a success status; verify onchain state manually",
         {
           label: tx.label,
-          hash: response.hash,
-          submittedSoFar: [...submitted, submittedEntry]
+          hash: confirmedHash,
+          submittedSoFar: [...submitted, receiptEntry]
         }
       );
       invariant(
@@ -226,15 +253,17 @@ export async function runExecutePrepared(
         "Prepared transaction reverted after it was submitted",
         {
           label: tx.label,
-          hash: response.hash,
+          hash: confirmedHash,
           status: receipt.status,
-          submittedSoFar: [...submitted, submittedEntry]
+          submittedSoFar: [...submitted, receiptEntry]
         }
       );
 
       submitted.push({
-        ...submittedEntry,
-        status: receipt.status
+        label: tx.label,
+        hash: confirmedHash,
+        status: receipt.status,
+        gasUsed: receiptGasUsed
       });
     }
   } catch (error) {
@@ -304,4 +333,96 @@ function withSubmittedContext(
   return new AjnaSkillError("EXECUTE_FAILED", "Prepared transaction execution failed", {
     submittedSoFar: submitted
   });
+}
+
+function waitFailureAsSkillError(
+  error: unknown,
+  label: ExecutePreparedResult["submitted"][number]["label"],
+  originalHash: string,
+  submitted: ExecutePreparedResult["submitted"],
+  submittedEntry: {
+    label: ExecutePreparedResult["submitted"][number]["label"];
+    hash: string;
+    status: null;
+    gasUsed: null;
+  }
+): AjnaSkillError {
+  const submittedSoFar = [...submitted, submittedEntry];
+
+  if (isTransactionReplacedError(error)) {
+    return new AjnaSkillError(
+      "EXECUTE_TRANSACTION_REPLACED",
+      "Submitted transaction was replaced before confirmation",
+      {
+        label,
+        hash: originalHash,
+        replacementHash: error.replacement?.hash ?? null,
+        replacementReason: error.reason ?? null,
+        cancelled: Boolean(error.cancelled),
+        submittedSoFar
+      }
+    );
+  }
+
+  return new AjnaSkillError("EXECUTE_WAIT_FAILED", "Submitted transaction could not be confirmed", {
+    label,
+    hash: originalHash,
+    waitErrorCode: waitErrorCode(error),
+    submittedSoFar
+  });
+}
+
+function replacementSuccessReceipt(
+  error: unknown,
+  original: ethers.providers.TransactionRequest
+): { hash: string; receipt: ethers.providers.TransactionReceipt } | null {
+  if (!isTransactionReplacedError(error)) {
+    return null;
+  }
+
+  const receipt = error.receipt;
+  const replacement = error.replacement;
+
+  if (error.cancelled || !receipt || receipt.status !== 1 || !replacement) {
+    return null;
+  }
+
+  const sameTarget = (replacement.to ?? null) === (original.to ?? null);
+  const sameData = (replacement.data ?? "0x").toString() === (original.data ?? "0x").toString();
+  const sameValue = ethers.BigNumber.from(replacement.value ?? 0).eq(ethers.BigNumber.from(original.value ?? 0));
+
+  if (!sameTarget || !sameData || !sameValue) {
+    return null;
+  }
+
+  return {
+    hash: replacement.hash,
+    receipt
+  };
+}
+
+function isTransactionReplacedError(
+  error: unknown
+): error is Error & {
+  code: string;
+  cancelled?: boolean;
+  reason?: string;
+  replacement?: ethers.providers.TransactionResponse;
+  receipt?: ethers.providers.TransactionReceipt;
+} {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "TRANSACTION_REPLACED"
+  );
+}
+
+function waitErrorCode(error: unknown): string | null {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" ? code : null;
+  }
+
+  return null;
 }

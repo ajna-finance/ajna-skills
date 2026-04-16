@@ -85,7 +85,6 @@ const ERC721_APPROVAL_ABI = [
   "function setApprovalForAll(address operator, bool approved)"
 ] as const;
 const ERC721_INTERFACE_ID = "0x80ac58cd";
-const WAD = BigNumber.from("1000000000000000000");
 type UnsafeContractAbi = ReadonlyArray<any>;
 const UNSAFE_CONTRACT_ABIS: Record<UnsupportedAjnaContractKind, UnsafeContractAbi> = {
   "erc20-pool": ERC20Pool__factory.abi,
@@ -880,6 +879,7 @@ export class AjnaAdapter {
 
       const tokenId = BigNumber.from(input.tokenId);
       tokenIdMetadata = tokenId.toString();
+      await this.assertSubsetPoolTokenIdAllowed(poolTarget, provider, tokenId);
       const [approvedAddress, operatorApproved] = await Promise.all([
         token.getApproved(tokenId),
         token.isApprovedForAll(actorAddress, approvalTarget)
@@ -1105,6 +1105,29 @@ export class AjnaAdapter {
 
   private poolTargetSubsetHash(poolTarget: AjnaPoolTargetContext): string | null {
     return poolTarget.kind === "erc721-pool" ? poolTarget.subsetHash : null;
+  }
+
+  private async assertSubsetPoolTokenIdAllowed(
+    poolTarget: AjnaPoolTargetContext,
+    provider: ethers.providers.JsonRpcProvider,
+    tokenId: BigNumber
+  ): Promise<void> {
+    if (poolTarget.kind !== "erc721-pool" || poolTarget.subsetHash === ERC721_NON_SUBSET_HASH) {
+      return;
+    }
+
+    const pool = ERC721Pool__factory.connect(poolTarget.poolAddress, provider);
+    const tokenAllowed = await pool.tokenIdsAllowed(tokenId);
+
+    invariant(
+      tokenAllowed,
+      "INVALID_SUBSET_TOKEN_ID",
+      "Provided tokenId is not allowed in the Ajna ERC721 subset pool",
+      {
+        poolAddress: poolTarget.poolAddress,
+        tokenId: tokenId.toString()
+      }
+    );
   }
 
   private async readSymbol(

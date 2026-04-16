@@ -1,6 +1,39 @@
 import type { ErrorEnvelope } from "./types.js";
 
 const REDACTED_DETAIL_KEYS = new Set(["reason", "cause", "message", "error", "stack"]);
+const SAFE_STRING_DETAIL_KEYS = new Set([
+  "address",
+  "actorAddress",
+  "approvalScope",
+  "approvalTarget",
+  "collateralAddress",
+  "collateralType",
+  "contractAddress",
+  "contractKind",
+  "expected",
+  "expiresAt",
+  "factoryAddress",
+  "hash",
+  "label",
+  "left",
+  "name",
+  "network",
+  "owner",
+  "poolAddress",
+  "positionType",
+  "quoteAddress",
+  "replacementHash",
+  "replacementReason",
+  "right",
+  "signatureReason",
+  "signatureStatus",
+  "signer",
+  "spender",
+  "tokenAddress",
+  "tokenId",
+  "tokenStandard",
+  "waitErrorCode"
+]);
 
 export class AjnaSkillError extends Error {
   readonly code: string;
@@ -88,7 +121,7 @@ function sanitizeDetailValue(value: unknown, key?: string): unknown {
       return "UPSTREAM_ERROR_REDACTED";
     }
 
-    if (isSafeDetailString(collapsed)) {
+    if (key && SAFE_STRING_DETAIL_KEYS.has(key) && isSafeDetailString(collapsed)) {
       return collapsed;
     }
 
@@ -96,7 +129,7 @@ function sanitizeDetailValue(value: unknown, key?: string): unknown {
   }
 
   if (Array.isArray(value)) {
-    return value.slice(0, 20).map((entry) => sanitizeDetailValue(entry));
+    return value.slice(0, 20).map((entry) => sanitizeDetailValue(entry, key));
   }
 
   if (typeof value === "object") {

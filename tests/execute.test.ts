@@ -319,4 +319,100 @@ describe("runExecutePrepared", () => {
       code: "EXECUTE_RECEIPT_STATUS_UNKNOWN"
     });
   });
+
+  it("surfaces the original submitted hash when wait throws after submit", async () => {
+    const wallet = ethers.Wallet.createRandom();
+
+    process.env.AJNA_SKILLS_MODE = "execute";
+    process.env.AJNA_SIGNER_PRIVATE_KEY = wallet.privateKey;
+    process.env.AJNA_RPC_URL_BASE = "http://127.0.0.1:8545";
+
+    const preparedAction = await buildPreparedFixture(wallet, { startingNonce: 10 });
+
+    mockBaseProvider({ nonce: 10 });
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "estimateGas").mockResolvedValue(
+      BigNumber.from(21_000)
+    );
+    vi.spyOn(ethers.Wallet.prototype, "sendTransaction").mockResolvedValue({
+      hash: `0x${"5".padStart(64, "0")}`,
+      wait: async () => {
+        const error = new Error("timed out") as Error & { code: string };
+        error.code = "TIMEOUT";
+        throw error;
+      }
+    } as never);
+
+    await expect(runExecutePrepared({ preparedAction })).rejects.toMatchObject({
+      code: "EXECUTE_WAIT_FAILED",
+      details: {
+        hash: `0x${"5".padStart(64, "0")}`,
+        waitErrorCode: "TIMEOUT",
+        submittedSoFar: [
+          {
+            label: "action",
+            hash: `0x${"5".padStart(64, "0")}`,
+            status: null,
+            gasUsed: null
+          }
+        ]
+      }
+    });
+  });
+
+  it("accepts a repriced replacement when the mined replacement matches the prepared tx intent", async () => {
+    const wallet = ethers.Wallet.createRandom();
+
+    process.env.AJNA_SKILLS_MODE = "execute";
+    process.env.AJNA_SIGNER_PRIVATE_KEY = wallet.privateKey;
+    process.env.AJNA_RPC_URL_BASE = "http://127.0.0.1:8545";
+
+    const preparedAction = await buildPreparedFixture(wallet, {
+      startingNonce: 11,
+      transactions: [
+        {
+          label: "action",
+          target: "0x0000000000000000000000000000000000000100",
+          value: "0",
+          data: "0x1234",
+          from: wallet.address
+        }
+      ]
+    });
+
+    mockBaseProvider({ nonce: 11 });
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "estimateGas").mockResolvedValue(
+      BigNumber.from(21_000)
+    );
+    vi.spyOn(ethers.Wallet.prototype, "sendTransaction").mockResolvedValue({
+      hash: `0x${"6".padStart(64, "0")}`,
+      wait: async () => {
+        throw {
+          code: "TRANSACTION_REPLACED",
+          cancelled: false,
+          reason: "repriced",
+          replacement: {
+            hash: `0x${"7".padStart(64, "0")}`,
+            to: "0x0000000000000000000000000000000000000100",
+            data: "0x1234",
+            value: BigNumber.from(0)
+          },
+          receipt: {
+            status: 1,
+            gasUsed: BigNumber.from(21_000)
+          }
+        };
+      }
+    } as never);
+
+    const result = await runExecutePrepared({ preparedAction });
+
+    expect(result.submitted).toEqual([
+      {
+        label: "action",
+        hash: `0x${"7".padStart(64, "0")}`,
+        status: 1,
+        gasUsed: "21000"
+      }
+    ]);
+  });
 });

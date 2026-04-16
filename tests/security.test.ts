@@ -436,6 +436,43 @@ describe("AjnaAdapter safety checks", () => {
     expect(preparedAction.metadata.approveForAll).toBe(false);
   });
 
+  it("rejects single-token ERC721 approvals for tokenIds outside a subset pool", async () => {
+    mockBaseProvider();
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getTransactionCount").mockResolvedValue(9);
+    vi.spyOn(ERC20Pool__factory, "connect").mockReturnValue({
+      quoteTokenAddress: vi.fn().mockResolvedValue(quoteAddress),
+      collateralAddress: vi.fn().mockResolvedValue(collateralAddress),
+      quoteTokenScale: vi.fn().mockResolvedValue(BigNumber.from("1")),
+      collateralScale: vi.fn().mockRejectedValue({ code: "CALL_EXCEPTION" })
+    } as never);
+    const tokenIdsAllowed = vi.fn().mockResolvedValue(false);
+    vi.spyOn(ERC721Pool__factory, "connect").mockReturnValue({
+      quoteTokenAddress: vi.fn().mockResolvedValue(quoteAddress),
+      collateralAddress: vi.fn().mockResolvedValue(collateralAddress),
+      isSubset: vi.fn().mockResolvedValue(true),
+      tokenIdsAllowed
+    } as never);
+    vi.spyOn(ERC721PoolFactory__factory, "connect").mockReturnValue({
+      getDeployedPoolsList: vi.fn().mockResolvedValue([poolAddress])
+    } as never);
+    vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getLogs").mockRejectedValue(new Error("range capped"));
+
+    const adapter = new AjnaAdapter(runtime);
+
+    await expect(
+      adapter.prepareApproveErc721({
+        network: "base",
+        actorAddress,
+        tokenAddress: collateralAddress,
+        poolAddress,
+        tokenId: "1"
+      })
+    ).rejects.toMatchObject({
+      code: "INVALID_SUBSET_TOKEN_ID"
+    });
+    expect(tokenIdsAllowed).toHaveBeenCalledWith(BigNumber.from(1));
+  });
+
   it("still validates ERC721 subset pools when log lookup fails but factory membership is known", async () => {
     mockBaseProvider();
     vi.spyOn(ethers.providers.JsonRpcProvider.prototype, "getTransactionCount").mockResolvedValue(9);
